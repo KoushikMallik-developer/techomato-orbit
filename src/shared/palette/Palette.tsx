@@ -8,6 +8,7 @@ import { useServiceActions } from '@/features/services/api/useRuntime';
 import { useServices } from '@/features/services/api/useServices';
 import { CMD } from '@/shared/ipc/commands';
 import { ipc } from '@/shared/ipc/invoke';
+import { OPEN_PALETTE_EVENT } from '@/shared/layout/Sidebar/Sidebar';
 import { rankCommands, type Command } from './rankCommands';
 
 type Item = Command & { run: () => void };
@@ -35,8 +36,17 @@ export function Palette() {
         setCursor(0);
       } else if (e.key === 'Escape') setOpen(false);
     };
+    const openIt = () => {
+      setOpen(true);
+      setQuery('');
+      setCursor(0);
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener(OPEN_PALETTE_EVENT, openIt);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener(OPEN_PALETTE_EVENT, openIt);
+    };
   }, []);
   useEffect(() => {
     if (open) input.current?.focus();
@@ -115,13 +125,13 @@ export function Palette() {
   };
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-scrim pt-24 backdrop-blur-[2px]"
       onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}
     >
       <div
         role="dialog"
         aria-label="Command palette"
-        className="w-full max-w-xl overflow-hidden rounded-card border border-border bg-paper shadow-xl"
+        className="w-full max-w-xl overflow-hidden rounded-card border border-border bg-paper shadow-pop"
       >
         <input
           ref={input}

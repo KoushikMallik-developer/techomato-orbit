@@ -4,7 +4,12 @@ import { pushToast } from '@/app/uiSlice';
 import { CMD } from '@/shared/ipc/commands';
 import { ipcVoid } from '@/shared/ipc/invoke';
 import { Button } from '@/shared/ui/Button';
+import { Network } from 'lucide-react';
 import { Card } from '@/shared/ui/Card';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { inputClass as input, SearchInput } from '@/shared/ui/Field';
+import { PageHeader } from '@/shared/ui/PageHeader';
+import { Segmented } from '@/shared/ui/Segmented';
 import type { PortRow } from '../api/ports.schema';
 import {
   useCheckPort,
@@ -15,9 +20,6 @@ import {
 } from '../api/usePorts';
 import { PortTable } from '../components/PortTable';
 import { filterPorts, type ProtoFilter } from '../portFilter';
-
-const input =
-  'rounded-full border-[1.5px] border-border bg-paper px-4 py-1.5 text-sm outline-none focus:border-fg';
 
 export function PortsPage() {
   const dispatch = useAppDispatch();
@@ -51,25 +53,32 @@ export function PortsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-3xl font-extrabold">Ports</h1>
+      <PageHeader
+        title="Ports"
+        summary={
+          ports.data
+            ? `${ports.data.filter((r) => r.state === 'LISTEN' || r.proto === 'udp').length} listening · updates every 2 seconds`
+            : 'Reading ports'
+        }
+      />
       <div className="flex flex-wrap items-center gap-3">
-        <input
+        <SearchInput
           aria-label="Search ports"
           placeholder="Search port, process, path or service"
-          className={`${input} w-72`}
+          className="w-80"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <select
-          aria-label="Protocol"
-          className={input}
+        <Segmented
+          label="Protocol"
           value={proto}
-          onChange={(e) => setProto(e.target.value as ProtoFilter)}
-        >
-          <option value="all">TCP and UDP</option>
-          <option value="tcp">TCP</option>
-          <option value="udp">UDP</option>
-        </select>
+          onChange={setProto}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'tcp', label: 'TCP' },
+            { value: 'udp', label: 'UDP' },
+          ]}
+        />
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -128,12 +137,11 @@ export function PortsPage() {
         </Card>
       )}
       {ports.data && rows.length === 0 && (
-        <Card>
-          <p className="font-medium">No matching ports.</p>
-          <p className="text-sm text-fg-muted">
-            Nothing is listening that fits the current filters.
-          </p>
-        </Card>
+        <EmptyState
+          icon={Network}
+          title="No matching ports"
+          hint="Nothing is listening that fits the current filters."
+        />
       )}
       {rows.length > 0 && (
         <PortTable

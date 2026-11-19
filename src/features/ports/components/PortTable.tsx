@@ -1,4 +1,6 @@
 import { Button } from '@/shared/ui/Button';
+import { Pill } from '@/shared/ui/Pill';
+import { tableWrap, td, th, tr } from '@/shared/ui/table';
 import type { PortRow } from '../api/ports.schema';
 import { canEnd } from '../portFilter';
 
@@ -10,16 +12,13 @@ type Props = {
   onToggleWatch: (port: number) => void;
 };
 
-const th = 'px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-fg-muted';
-const td = 'px-3 py-2 align-top text-sm';
-
 export function PortTable({ rows, watch, busy, onEnd, onToggleWatch }: Props) {
   return (
-    <div className="overflow-x-auto rounded-card border border-border bg-paper">
-      <table className="w-full min-w-[56rem] border-collapse">
+    <div className={tableWrap}>
+      <table className="w-full border-collapse">
         <thead>
-          <tr className="border-b border-border">
-            {['Proto', 'Address', 'Port', 'Process', 'PID', 'Path', 'Service', ''].map((h) => (
+          <tr>
+            {['Port', 'Address', 'Process', 'PID', 'Service', ''].map((h) => (
               <th key={h} className={th}>
                 {h}
               </th>
@@ -28,27 +27,38 @@ export function PortTable({ rows, watch, busy, onEnd, onToggleWatch }: Props) {
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr
-              key={`${r.proto}-${r.localAddr}-${r.port}-${r.pid}`}
-              className="border-b border-border last:border-0"
-            >
-              <td className={td}>{r.proto.toUpperCase()}</td>
-              <td className={`${td} font-mono`}>{r.localAddr}</td>
-              <td className={`${td} font-mono font-semibold`}>{r.port}</td>
-              <td className={td}>
-                {r.processName ?? <span className="text-fg-muted">Unknown</span>}
+            <tr key={`${r.proto}-${r.localAddr}-${r.port}-${r.pid}`} className={tr}>
+              <td className={`${td} whitespace-nowrap`}>
+                <span className="mr-2 font-mono font-semibold">{r.port}</span>
+                <Pill>{r.proto.toUpperCase()}</Pill>
               </td>
-              <td className={`${td} font-mono`}>{r.pid}</td>
-              <td className={`${td} max-w-xs break-all text-fg-muted`} title={r.path ?? undefined}>
-                {r.path ?? 'Not readable'}
+              <td
+                className={`${td} max-w-[11rem] truncate font-mono text-fg-muted`}
+                title={r.localAddr}
+              >
+                {r.localAddr}
               </td>
+              <td className={`${td} max-w-[14rem]`}>
+                <div className="truncate font-medium">
+                  {r.processName ?? <span className="text-fg-muted">Unknown</span>}
+                </div>
+                <div className="truncate text-xs text-fg-subtle" title={r.path ?? undefined}>
+                  {r.path ?? 'Path not readable'}
+                </div>
+              </td>
+              <td className={`${td} font-mono text-fg-muted`}>{r.pid}</td>
               <td className={td}>
-                {r.serviceName ??
-                  (r.conflictsWith ? (
-                    <span className="text-danger">Blocks {r.conflictsWith}</span>
-                  ) : (
-                    <span className="text-fg-muted">—</span>
-                  ))}
+                {r.serviceName ? (
+                  <Pill tone="running" dot>
+                    {r.serviceName}
+                  </Pill>
+                ) : r.conflictsWith ? (
+                  <Pill tone="danger" dot>
+                    Blocks {r.conflictsWith}
+                  </Pill>
+                ) : (
+                  <span className="text-fg-subtle">—</span>
+                )}
               </td>
               <td className={`${td} whitespace-nowrap text-right`}>
                 <Button size="sm" onClick={() => onToggleWatch(r.port)}>
