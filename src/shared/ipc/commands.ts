@@ -10,6 +10,7 @@ export const CMD = {
   serviceForceStop: 'service_force_stop',
   serviceRestart: 'service_restart',
   serviceRuntimeList: 'service_runtime_list',
+  serviceSecretIsSet: 'service_secret_is_set',
 } as const;
 
 export type CmdName = (typeof CMD)[keyof typeof CMD];

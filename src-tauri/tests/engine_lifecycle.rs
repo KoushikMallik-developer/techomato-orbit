@@ -485,3 +485,36 @@ fn three_failed_probes_make_a_running_service_unresponsive_and_a_pass_restores_i
     wait_status(&h, &s.id, Status::Running, 10);
     h.sup.stop(&s.id, false).unwrap();
 }
+
+#[test]
+#[ignore]
+fn a_secret_reaches_the_child_but_never_the_logs_events_or_sqlite() {
+    let h = harness();
+    let secret = "s3cr3t-Value-42";
+    let mut spec = svc(&h, "api", &["env", "API_TOKEN"], None);
+    spec.env = vec![EnvVar {
+        key: "API_TOKEN".into(),
+        value: Some(secret.into()),
+        is_secret: true,
+    }];
+    let spec = repo::update(&h.db, h.secrets.as_ref(), &spec).unwrap();
+    h.sup.start(&spec.id).unwrap();
+    wait_until("the output line", Duration::from_secs(5), || {
+        h.sup
+            .logs(&spec.id)
+            .recent(10)
+            .iter()
+            .any(|l| l.text.contains("••••"))
+    });
+    wait_status(&h, &spec.id, Status::Stopped, 5);
+    let lines = h.sup.logs(&spec.id).recent(50);
+    assert!(lines.iter().all(|l| !l.text.contains(secret)), "{lines:?}");
+    let events = serde_json::to_string(&*h.events.lock().unwrap()).unwrap();
+    assert!(!events.contains(secret));
+    let stored = repo::get(&h.db, &spec.id).unwrap();
+    assert_eq!(stored.env[0].value, None);
+    assert_eq!(
+        h.secrets.get(&spec.id, "API_TOKEN").unwrap().as_deref(),
+        Some(secret)
+    );
+}

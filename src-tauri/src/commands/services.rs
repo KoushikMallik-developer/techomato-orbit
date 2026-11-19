@@ -114,3 +114,13 @@ pub async fn service_restart(sup: State<'_, Supervisor>, id: String) -> AppResul
 pub async fn service_runtime_list(sup: State<'_, Supervisor>) -> AppResult<Vec<ServiceRuntime>> {
     sup.all_runtime()
 }
+
+/// Whether a secret env value is stored, so the UI can show "set" without ever receiving it.
+#[tauri::command]
+pub async fn service_secret_is_set(
+    secrets: Secrets<'_>,
+    id: String,
+    key: String,
+) -> AppResult<bool> {
+    Ok(secrets.get(&id, &key)?.is_some())
+}
