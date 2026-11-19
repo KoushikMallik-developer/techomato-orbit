@@ -71,6 +71,7 @@ docs/{architecture.md,database_schema.md}
 **Files:** Create everything under repo root listed above that is configuration: `package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`, `.gitignore`, `.github/workflows/ci.yml`, `README.md` (replace stub; credit Nexus Console as inspiration only).
 
 **Interfaces:**
+
 - Produces: `npm start` (= `tauri dev`), `npm test`, `npm run typecheck`, `npm run lint`, `cargo test --manifest-path src-tauri/Cargo.toml`, and a window titled "Techomato Orbit" showing a placeholder.
 
 - [ ] **Step 1: Check prerequisites.** Run `node -v` (≥ 22.12), `rustc --version`, `cargo --version`, and look for the MSVC C++ build tools. Expected today: Rust missing; Visual Studio 2019 present but C++ workload unconfirmed (the `link.exe` on PATH is Git's, not MSVC's).
@@ -85,11 +86,13 @@ docs/{architecture.md,database_schema.md}
 ### Task 1: Techomato design tokens, fonts and app shell
 
 **Files:**
+
 - Create: `src/styles/{theme.css,fonts.css,index.css}`, `public/fonts/*.woff2`, `src/shared/ui/{Button,Pill,Card,StatusDot}/*`, `src/shared/layout/{AppShell,Sidebar}/*`, `src/app/{App.tsx,Bootstrap.tsx}`
 - Modify: `index.html` (set `data-theme` in a pre-module script from stored preference or `prefers-color-scheme`)
 - Test: `src/shared/ui/StatusDot/StatusDot.test.ts`
 
 **Interfaces:**
+
 - Produces: tokens `--color-canvas`, `--color-paper`, `--color-fg`, `--color-fg-muted`, `--color-border`, `--color-accent` (`#C8381F`), status ramp `running|stopped|warn|danger|starting` each with `-soft`; Tailwind utilities `bg-canvas text-fg border-border text-accent`; `<Button variant="primary|ghost|danger" size="sm|md">` (pill); `<StatusDot status={ServiceStatus} />` where `type ServiceStatus = 'stopped'|'starting'|'running'|'stopping'|'failed'|'unresponsive'|'unknown'`; `statusLabel(status): string`; `<AppShell>` with `<Sidebar>` rail (Services, Logs, Settings for now).
 
 - [ ] **Step 1: Write failing test** `statusLabel` returns exactly: `"Stopped","Starting","Running","Stopping","Failed","Unresponsive","Unknown"` for the seven statuses, and `StatusDot` maps `failed` and `unresponsive` to a danger/warn token plus a text label (colour is never the only signal).
@@ -104,10 +107,12 @@ docs/{architecture.md,database_schema.md}
 ### Task 2: Typed IPC boundary and error type
 
 **Files:**
+
 - Create: `src/shared/ipc/{invoke.ts,commands.ts,schemas.ts,events.ts}`, `src-tauri/src/error.rs`, `src-tauri/src/commands/mod.rs`
 - Test: `src/shared/ipc/invoke.test.ts`, `src-tauri/src/error.rs` (`#[cfg(test)]`)
 
 **Interfaces:**
+
 - Produces (Rust): `enum ErrorKind { Validation, NotFound, Conflict, Io, Db, Os, Cancelled, Internal }`; `struct AppError { kind, message, detail: Option<String> }` implementing `serde::Serialize` as `{kind,message,detail}` and `From` for `rusqlite::Error` and `std::io::Error`; `type AppResult<T> = Result<T, AppError>`.
 - Produces (TS): `class IpcError extends Error { kind: string; detail?: string }`; `ipc<T>(cmd: CmdName, args: unknown, schema: z.ZodType<T>): Promise<T>`; `ipcVoid(cmd: CmdName, args?: unknown): Promise<void>`; `CMD` const object (no raw command strings elsewhere); `useIpcEvent<T>(name: string, schema: z.ZodType<T>, handler: (v: T) => void)`.
 - Rule: `invoke.ts` is the only file that imports `@tauri-apps/api/core`.
@@ -123,11 +128,13 @@ docs/{architecture.md,database_schema.md}
 ### Task 3: SQLite store and migrations
 
 **Files:**
+
 - Create: `src-tauri/src/db/mod.rs`, `src-tauri/src/db/migrations/0001_init.sql`, `docs/database_schema.md`
 - Modify: `src-tauri/src/lib.rs` (open DB at startup, manage as Tauri state)
 - Test: tests in `db/mod.rs`
 
 **Interfaces:**
+
 - Produces: `struct Db(Mutex<Connection>)`; `fn open(path: &Path) -> AppResult<Db>` (creates parent dir, `PRAGMA foreign_keys=ON`, WAL, applies migrations by `PRAGMA user_version`); `fn open_in_memory() -> AppResult<Db>` for tests; `const SCHEMA_VERSION: u32`.
 - Schema `0001`: `services`, `service_env` (service_id FK, key, value NULL when `is_secret=1`, is_secret), `service_processes` (service_id FK, pid, created_at_ms, started_at, adopted), `activity_history` (id, ts, service_id NULL, kind, message), `settings` (key PK, value). Indexes on every FK and `activity_history(ts)`. Projects, dependencies and notifications tables arrive in plan 2.
 
@@ -142,11 +149,13 @@ docs/{architecture.md,database_schema.md}
 ### Task 4: Service model, validation and repository
 
 **Files:**
+
 - Create: `src-tauri/src/models/service.rs`, `src-tauri/src/repo/services.rs`, `src-tauri/src/commands/services.rs` (CRUD only), `src/features/services/api/services.schema.ts`, `src/features/services/api/useServices.ts`
 - Modify: `commands/mod.rs`, `lib.rs` (register), `shared/ipc/commands.ts`
 - Test: in `models/service.rs`, `repo/services.rs`; `src/features/services/api/services.schema.test.ts`
 
 **Interfaces:**
+
 - Produces (Rust, all `#[serde(rename_all="camelCase")]`):
   - `struct ServiceSpec { id: String, name: String, description: String, category: Category, project_id: Option<String>, working_dir: String, executable: String, args: Vec<String>, run_through_shell: bool, env: Vec<EnvVar>, port: Option<u16>, startup_timeout_secs: u32, shutdown_timeout_secs: u32, restart: RestartPolicy, health: Option<HealthCheck>, keep_running_on_quit: bool, allow_multiple: bool, enabled: bool }`
   - `enum Category { Database, Cache, Backend, Frontend, Worker, Queue, Custom }`
@@ -169,10 +178,12 @@ docs/{architecture.md,database_schema.md}
 ### Task 5: Process identity and stale detection
 
 **Files:**
+
 - Create: `src-tauri/src/windows/procs.rs`
 - Test: in `procs.rs`
 
 **Interfaces:**
+
 - Produces: `struct ProcId { pid: u32, created_at_ms: u64 }`; `fn identify(pid: u32) -> Option<ProcId>` (None if no such process or access denied); `fn is_alive(id: &ProcId) -> bool` (true only if a process with that PID exists **and** its creation time equals `created_at_ms`); `fn children_of(pid: u32) -> Vec<u32>`.
 - Uses `OpenProcess` + `GetProcessTimes` (via the `windows` crate); `sysinfo` only for the child list.
 
@@ -187,10 +198,12 @@ docs/{architecture.md,database_schema.md}
 ### Task 6: Job Objects, graceful stop and log capture
 
 **Files:**
+
 - Create: `src-tauri/src/windows/{job.rs,console.rs}`, `src-tauri/src/engine/logs.rs`, `src-tauri/src/bin/orbit-testsvc.rs`
 - Test: `src-tauri/tests/engine_process.rs` (`#[ignore]` real-process tests), unit tests in `logs.rs`
 
 **Interfaces:**
+
 - Produces (testsvc): `orbit-testsvc serve <port>` (HTTP 200 on `/`, exits 0 on Ctrl+Break/Ctrl+C); `exit <code>`; `crash` (panics, exit 101); `ignore-stop <port>` (serves, ignores Ctrl+Break/Ctrl+C and window close); `handle-stop` (prints `STOPPING` on stop signal and exits 0); `spawn-child` (spawns a child `serve` and prints its PID); `spam <mb>` (writes `<mb>` MB of lines to stdout, plus one 4 MB single line to stderr).
 - Produces (Rust):
   - `struct ManagedProcess { id: ProcId, job: Job, stdout: ChildStdout, stderr: ChildStderr }`
@@ -212,11 +225,13 @@ docs/{architecture.md,database_schema.md}
 ### Task 7: Service supervisor (lifecycle, preflight, restart policy)
 
 **Files:**
+
 - Create: `src-tauri/src/engine/{mod.rs,state.rs,supervisor.rs,preflight.rs}`, `src-tauri/src/commands/services.rs` (extend with lifecycle)
 - Modify: `lib.rs` (manage `Supervisor`, adopt stale records at startup)
 - Test: unit tests in `state.rs` and `preflight.rs`; `src-tauri/tests/engine_lifecycle.rs` (`#[ignore]`)
 
 **Interfaces:**
+
 - Consumes: `ServiceSpec`, `repo::services`, `job::spawn`, `console::send_graceful`, `job::terminate_tree`, `LogSink`, `ProcId`.
 - Produces:
   - `enum Status` (same seven values, `serde(rename_all="lowercase")`) and `struct ServiceRuntime { id: String, status: Status, pid: Option<u32>, parent_pid: Option<u32>, started_at_ms: Option<u64>, exit_code: Option<i32>, restart_count: u32, last_error: Option<String> }` (camelCase).
@@ -239,11 +254,13 @@ docs/{architecture.md,database_schema.md}
 ### Task 8: Health checks
 
 **Files:**
+
 - Create: `src-tauri/src/engine/health.rs`
 - Modify: `supervisor.rs` (use it)
 - Test: `health.rs` unit tests
 
 **Interfaces:**
+
 - Produces: `async fn run_once(check: &HealthCheck) -> HealthResult` where `enum HealthResult { Healthy, Unhealthy(String) }`; `Tcp` connects to `127.0.0.1:port`; `Http` does a GET with a timeout and accepts `min_status..=max_status`; `Command` runs the exe with args and no shell, healthy on exit 0. An `Unhealthy` result for 3 consecutive intervals moves a `running` service to `unresponsive`; a later `Healthy` returns it to `running`.
 - HTTP uses a minimal client over `std`/`tokio` TCP only if no HTTP crate is already a dependency (no new network-facing dependency beyond localhost use).
 
@@ -258,11 +275,13 @@ docs/{architecture.md,database_schema.md}
 ### Task 9: Secrets and environment handling
 
 **Files:**
+
 - Create: `src-tauri/src/windows/creds.rs`
 - Modify: `repo/services.rs`, `supervisor.rs`
 - Test: `creds.rs` (ignored real-store test), repo tests
 
 **Interfaces:**
+
 - Produces: `fn set_secret(service_id: &str, key: &str, value: &str) -> AppResult<()>`, `fn get_secret(service_id: &str, key: &str) -> AppResult<Option<String>>`, `fn delete_secrets(service_id: &str) -> AppResult<()>` using `CredWriteW/CredReadW/CredDeleteW` with target `TechomatoOrbit/<service_id>/<key>`.
 - Behavior: `create`/`update` move secret values into Credential Manager and store `NULL` in SQLite; the supervisor reads them only when building the child environment; `service_get` returns secret values as `null` with `isSecret: true` and a separate `service_secret_is_set` boolean command, so the UI can show "set" without ever receiving the value; deleting a service removes its credentials.
 
@@ -277,11 +296,13 @@ docs/{architecture.md,database_schema.md}
 ### Task 10: Services and Logs UI
 
 **Files:**
+
 - Create: `src/features/services/components/{ServiceRow,ServiceForm,ServiceActions}/*`, `src/features/services/pages/ServicesPage/*`, `src/features/logs/{api,components,pages}/*`, `src-tauri/src/commands/logs.rs`
 - Modify: `AppShell`/`Sidebar` routes, `shared/ipc/commands.ts`
 - Test: `src/features/services/components/ServiceActions/powerState.test.ts`, `src/features/services/components/ServiceForm/formToSpec.test.ts`, `src/features/logs/logFilter.test.ts`
 
 **Interfaces:**
+
 - Consumes: all service commands and `service://status` events from Tasks 4 and 7.
 - Produces (Rust commands): `log_recent(service_id: String, n: usize) -> Vec<LogLine>`, `log_history(service_id: String, offset: usize, limit: usize, filter: Option<String>) -> Vec<LogLine>`, `log_clear(service_id)` (confirms natively), `log_export(service_id, path)` via the native save dialog; event `log://line` payload `{serviceId, tsMs, stream, text}` (batched at most every 100 ms).
 - Produces (TS): `availableActions(status: ServiceStatus): {start:boolean, stop:boolean, restart:boolean, forceStop:boolean}`; `formToSpec(form: ServiceFormValues): ServiceSpec`; `filterLines(lines: LogLine[], query: string, streams: Set<Stream>): LogLine[]`.
@@ -299,11 +320,13 @@ docs/{architecture.md,database_schema.md}
 ### Task 11: Tray, close-to-tray, persistence and milestone acceptance
 
 **Files:**
+
 - Create: `src-tauri/src/tray.rs`, `docs/architecture.md`
 - Modify: `lib.rs`, `README.md`
 - Test: `src-tauri/tests/acceptance.rs` (`#[ignore]`)
 
 **Interfaces:**
+
 - Produces: tray icon with menu "Open Orbit", "Running services: N" (disabled item, refreshed on `service://status`), "Quit Orbit"; closing the window hides it; "Quit Orbit" stops services per `keep_running_on_quit`, then exits. A scripted acceptance test that drives the Rust API without the UI.
 
 - [ ] **Step 1: Write the failing acceptance test (ignored).** Using a temp data directory: create a service for `orbit-testsvc serve <port>` with an env var and a non-default working directory, start it, assert real PID alive and HTTP 200, read logs, stop, restart, stop; drop the supervisor and DB handle, reopen from the same directory, and assert the service and all its fields (including secret-set flag) are intact and no process remains.
