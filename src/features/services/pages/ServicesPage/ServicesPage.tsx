@@ -7,6 +7,7 @@ import { useDeleteService, useSaveService, useServices } from '../../api/useServ
 import { useRuntime } from '../../api/useRuntime';
 import type { ServiceSpec } from '../../api/services.schema';
 import { ServiceForm } from '../../components/ServiceForm/ServiceForm';
+import { WindowsServicesSection } from '@/features/winservices/pages/WindowsServicesSection';
 import { ServiceRow } from '../../components/ServiceRow/ServiceRow';
 
 export function ServicesPage() {
@@ -61,6 +62,9 @@ export function ServicesPage() {
           onLogs={() => dispatch(showLogs(s.id))}
         />
       ))}
+      <div className="mt-4">
+        <WindowsServicesSection />
+      </div>
     </div>
   );
 }

@@ -37,6 +37,9 @@ export const CMD = {
   winserviceList: 'winservice_list',
   winservicePins: 'winservice_pins',
   winserviceSetPins: 'winservice_set_pins',
+  winserviceStart: 'winservice_start',
+  winserviceStop: 'winservice_stop',
+  winserviceRestart: 'winservice_restart',
   pickPath: 'pick_path',
 } as const;
 

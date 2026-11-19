@@ -141,6 +141,9 @@ pub fn run() {
             commands::winservices::winservice_list,
             commands::winservices::winservice_pins,
             commands::winservices::winservice_set_pins,
+            commands::winservices::winservice_start,
+            commands::winservices::winservice_stop,
+            commands::winservices::winservice_restart,
             commands::pick_path,
         ])
         .run(tauri::generate_context!())
