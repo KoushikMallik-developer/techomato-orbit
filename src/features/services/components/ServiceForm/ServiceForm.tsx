@@ -4,6 +4,7 @@ import { CMD } from '@/shared/ipc/commands';
 import { ipc } from '@/shared/ipc/invoke';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
+import { useProjects } from '@/features/projects/api/useProjects';
 import { CATEGORIES, type ServiceSpec } from '../../api/services.schema';
 import {
   defaultFormValues,
@@ -58,6 +59,7 @@ export function ServiceForm({ initial, saving, onSave, onCancel }: Props) {
   const [f, setF] = useState<ServiceFormValues>(() =>
     initial ? specToForm(initial) : defaultFormValues(),
   );
+  const projects = useProjects();
   const [error, setError] = useState<string | null>(null);
   const [stored, setStored] = useState<Set<string>>(new Set());
   const set = <K extends keyof ServiceFormValues>(k: K, v: ServiceFormValues[K]) =>
@@ -117,6 +119,21 @@ export function ServiceForm({ initial, saving, onSave, onCancel }: Props) {
             </select>
           </Field>
         </div>
+
+        <Field label="Project">
+          <select
+            className={input}
+            value={f.projectId ?? ''}
+            onChange={(e) => set('projectId', e.target.value === '' ? null : e.target.value)}
+          >
+            <option value="">No project</option>
+            {(projects.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
 
         <Field label="Executable" hint="A full path, or a name found on PATH.">
           <span className="flex gap-2">

@@ -7,11 +7,14 @@ import { useDeleteService, useSaveService, useServices } from '../../api/useServ
 import { useRuntime } from '../../api/useRuntime';
 import type { ServiceSpec } from '../../api/services.schema';
 import { ServiceForm } from '../../components/ServiceForm/ServiceForm';
+import { WindowsServicesSection } from '@/features/winservices/pages/WindowsServicesSection';
+import { usePrefs } from '@/features/settings/api/usePrefs';
 import { ServiceRow } from '../../components/ServiceRow/ServiceRow';
 
 export function ServicesPage() {
   const dispatch = useAppDispatch();
   const services = useServices();
+  const winEnabled = usePrefs().data?.modules.winservices !== false;
   const runtime = useRuntime();
   const save = useSaveService();
   const del = useDeleteService();
@@ -61,6 +64,11 @@ export function ServicesPage() {
           onLogs={() => dispatch(showLogs(s.id))}
         />
       ))}
+      {winEnabled && (
+        <div className="mt-4">
+          <WindowsServicesSection />
+        </div>
+      )}
     </div>
   );
 }

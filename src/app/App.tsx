@@ -3,10 +3,13 @@ import { Provider } from 'react-redux';
 import { queryClient } from './queryClient';
 import { Bootstrap } from './Bootstrap';
 import { store, useAppSelector } from './store';
+import { ProjectsPage } from '@/features/projects/pages/ProjectsPage';
+import { PortsPage } from '@/features/ports/pages/PortsPage';
+import { SettingsPage } from '@/features/settings/pages/SettingsPage';
+import { Palette } from '@/shared/palette/Palette';
 import { LogsPage } from '@/features/logs/pages/LogsPage';
 import { ServicesPage } from '@/features/services/pages/ServicesPage/ServicesPage';
 import { AppShell } from '@/shared/layout/AppShell';
-import { Card } from '@/shared/ui/Card';
 import { ToastHost } from '@/shared/ui/Toast';
 
 function Content() {
@@ -14,13 +17,11 @@ function Content() {
   return (
     <AppShell>
       {module === 'services' && <ServicesPage />}
+      {module === 'projects' && <ProjectsPage />}
+      {module === 'ports' && <PortsPage />}
       {module === 'logs' && <LogsPage />}
-      {module === 'settings' && (
-        <>
-          <h1 className="mb-4 text-3xl font-extrabold">Settings</h1>
-          <Card>Nothing here yet.</Card>
-        </>
-      )}
+      {module === 'settings' && <SettingsPage />}
+      <Palette />
       <ToastHost />
     </AppShell>
   );
