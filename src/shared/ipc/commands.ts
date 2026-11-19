@@ -23,6 +23,17 @@ export const CMD = {
   notifyPortConflict: 'notify_port_conflict',
   prefsGet: 'prefs_get',
   prefsSet: 'prefs_set',
+  projectList: 'project_list',
+  projectCreate: 'project_create',
+  projectUpdate: 'project_update',
+  projectArchive: 'project_archive',
+  projectDelete: 'project_delete',
+  projectDuplicate: 'project_duplicate',
+  dependencyEdges: 'dependency_edges',
+  dependencySet: 'dependency_set',
+  projectStart: 'project_start',
+  projectStop: 'project_stop',
+  projectRestart: 'project_restart',
   pickPath: 'pick_path',
 } as const;
 

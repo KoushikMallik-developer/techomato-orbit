@@ -4,5 +4,6 @@ pub mod logs;
 pub mod notify;
 pub mod ports;
 pub mod preflight;
+pub mod projects;
 pub mod state;
 pub mod supervisor;

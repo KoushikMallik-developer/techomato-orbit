@@ -126,6 +126,17 @@ pub fn run() {
             commands::notifications::notify_port_conflict,
             commands::notifications::prefs_get,
             commands::notifications::prefs_set,
+            commands::projects::project_list,
+            commands::projects::project_create,
+            commands::projects::project_update,
+            commands::projects::project_archive,
+            commands::projects::project_delete,
+            commands::projects::project_duplicate,
+            commands::projects::dependency_edges,
+            commands::projects::dependency_set,
+            commands::projects::project_start,
+            commands::projects::project_stop,
+            commands::projects::project_restart,
             commands::pick_path,
         ])
         .run(tauri::generate_context!())
