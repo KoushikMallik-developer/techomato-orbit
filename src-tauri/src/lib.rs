@@ -5,6 +5,7 @@ pub mod error;
 pub mod models;
 pub mod repo;
 pub mod secrets;
+pub mod single_instance;
 pub mod tray;
 pub mod windows;
 
@@ -20,6 +21,11 @@ fn data_dir(app: &tauri::App) -> Result<std::path::PathBuf, Box<dyn std::error::
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // A second Orbit would supervise the same services; bring the first one forward instead.
+    let Some(_single) = single_instance::acquire(single_instance::APP_MUTEX) else {
+        single_instance::focus_existing();
+        return;
+    };
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .on_window_event(|window, event| {

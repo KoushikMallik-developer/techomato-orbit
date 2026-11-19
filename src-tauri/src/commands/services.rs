@@ -38,6 +38,12 @@ pub async fn service_update(
     repo::update(&db, secrets.inner().as_ref(), &spec)
 }
 
+/// Only a service with no live process can be deleted (a Failed one has none).
+pub fn can_delete(status: crate::engine::state::Status) -> bool {
+    use crate::engine::state::Status::*;
+    matches!(status, Stopped | Failed | Unknown)
+}
+
 #[tauri::command]
 pub async fn service_delete(
     app: AppHandle,
@@ -47,7 +53,7 @@ pub async fn service_delete(
     id: String,
 ) -> AppResult<()> {
     let spec = repo::get(&db, &id)?;
-    if sup.runtime(&id).status != crate::engine::state::Status::Stopped {
+    if !can_delete(sup.runtime(&id).status) {
         return Err(AppError::new(
             ErrorKind::Conflict,
             "Stop this service before deleting it.",
@@ -123,4 +129,20 @@ pub async fn service_secret_is_set(
     key: String,
 ) -> AppResult<bool> {
     Ok(secrets.get(&id, &key)?.is_some())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::can_delete;
+    use crate::engine::state::Status::*;
+
+    #[test]
+    fn only_a_service_with_no_live_process_can_be_deleted() {
+        for s in [Stopped, Failed, Unknown] {
+            assert!(can_delete(s), "{s:?}");
+        }
+        for s in [Starting, Running, Stopping, Unresponsive] {
+            assert!(!can_delete(s), "{s:?}");
+        }
+    }
 }

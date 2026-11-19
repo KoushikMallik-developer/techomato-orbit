@@ -518,3 +518,110 @@ fn a_secret_reaches_the_child_but_never_the_logs_events_or_sqlite() {
         Some(secret)
     );
 }
+
+#[test]
+#[ignore]
+fn a_bare_command_name_that_resolves_to_a_cmd_shim_starts() {
+    // `npm`, `npx`, `yarn` are .cmd shims: preflight finds them via PATHEXT, so spawn must too.
+    let h = harness();
+    let shim_dir = tempfile::tempdir().unwrap();
+    std::fs::write(shim_dir.path().join("shim.cmd"), "@echo shim-ran\r\n").unwrap();
+    let mut s = svc(&h, "npm-like", &[], None);
+    s.executable = shim_dir.path().join("shim").to_string_lossy().into_owned();
+    let s = repo::update(&h.db, h.secrets.as_ref(), &s).unwrap();
+    h.sup.start(&s.id).unwrap();
+    wait_status(&h, &s.id, Status::Stopped, 8);
+    wait_until("the shim's output", Duration::from_secs(3), || {
+        h.sup
+            .logs(&s.id)
+            .recent(10)
+            .iter()
+            .any(|l| l.text.contains("shim-ran"))
+    });
+}
+
+#[test]
+#[ignore]
+fn a_grandchild_is_ended_when_its_parent_exits() {
+    let h = harness();
+    let port = free_port();
+    let s = svc(&h, "wrapper", &["orphan", &port.to_string()], None);
+    h.sup.start(&s.id).unwrap();
+    let mut child: Option<ProcId> = None;
+    wait_until("the CHILD line", Duration::from_secs(5), || {
+        for l in h.sup.logs(&s.id).recent(10) {
+            if let Some(pid) = l.text.strip_prefix("CHILD ") {
+                child = identify(pid.trim().parse().unwrap());
+            }
+        }
+        child.is_some()
+    });
+    let child = child.unwrap();
+    wait_status(&h, &s.id, Status::Stopped, 8);
+    wait_until("the grandchild to be ended", Duration::from_secs(3), || {
+        !is_alive(&child)
+    });
+}
+
+#[test]
+#[ignore]
+fn a_stop_that_lands_while_a_service_is_starting_is_never_left_stuck() {
+    for round in 0..15 {
+        let h = harness();
+        let port = free_port();
+        let s = svc(&h, "racy", &["serve", &port.to_string()], Some(port));
+        let sup = h.sup.clone();
+        let id = s.id.clone();
+        let stopper = std::thread::spawn(move || {
+            // Hammer stop from the moment the claim is visible until a stop is accepted.
+            let t = Instant::now();
+            while t.elapsed() < Duration::from_secs(3) {
+                if sup.runtime(&id).status == Status::Starting && sup.stop(&id, true).is_ok() {
+                    return;
+                }
+            }
+        });
+        let _ = h.sup.start(&s.id);
+        stopper.join().unwrap();
+        wait_until(
+            &format!("a settled state (round {round})"),
+            Duration::from_secs(8),
+            || {
+                matches!(
+                    h.sup.runtime(&s.id).status,
+                    Status::Stopped | Status::Failed
+                )
+            },
+        );
+        let pid = h.sup.runtime(&s.id).pid;
+        assert!(
+            pid.is_none(),
+            "round {round}: a process is still attributed to a stopped service"
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn a_keep_running_service_still_shows_its_output_and_stops_cleanly() {
+    let h = harness();
+    let port = free_port();
+    let mut s = svc(&h, "daemon", &["serve", &port.to_string()], Some(port));
+    s.keep_running_on_quit = true;
+    let s = repo::update(&h.db, h.secrets.as_ref(), &s).unwrap();
+    h.sup.start(&s.id).unwrap();
+    wait_status(&h, &s.id, Status::Running, 8);
+    wait_until(
+        "its output via the file tail",
+        Duration::from_secs(5),
+        || {
+            h.sup
+                .logs(&s.id)
+                .recent(10)
+                .iter()
+                .any(|l| l.text.contains("listening on"))
+        },
+    );
+    h.sup.stop(&s.id, false).unwrap();
+    assert_eq!(h.sup.runtime(&s.id).status, Status::Stopped);
+}

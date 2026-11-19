@@ -82,10 +82,20 @@ Closing the window hides it. The tray menu has Open Orbit, a disabled "Running s
 service in parallel except those marked keep-running-on-quit, then exits. On the next start,
 `adopt_on_startup` re-attaches to survivors whose identity still matches.
 
+## Single instance
+
+A named mutex (`Local\TechomatoOrbit.SingleInstance`) allows one Orbit per Windows session. A
+second launch brings the first window forward (even from the tray) and exits.
+
+## Keep-running services
+
+A pipe's read end lives in Orbit, so a service that must outlive Orbit would crash on its next
+write after Orbit exits. Services marked keep-running therefore write stdout and stderr (merged)
+to `<logs>/<id>.raw`, which Orbit tails into the normal log pipeline while it runs.
+
 ## Known gaps (tracked for later plans)
 
-- Only one Orbit instance should run; a second would supervise the same services. No
-  single-instance guard yet.
 - `https://` health URLs are only checked as a TCP connect (no TLS stack).
-- Adopted services cannot be stopped gracefully, only force-ended.
+- Keep-running services lose the stdout/stderr distinction, and their raw file is only truncated at
+  each start, not rotated while running.
 - `allow_multiple` is stored but the supervisor runs one process per service.

@@ -313,6 +313,26 @@ impl Supervisor {
     }
 }
 
+/// Reads a file that another process is still appending to: at end of file it waits for more,
+/// and only reports EOF once `done` is set and everything has been read.
+struct TailReader {
+    file: std::fs::File,
+    done: Arc<AtomicBool>,
+}
+
+impl std::io::Read for TailReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            let finished = self.done.load(Ordering::SeqCst);
+            let n = self.file.read(buf)?;
+            if n > 0 || finished {
+                return Ok(n);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
 impl Inner {
     fn slot(&self, id: &str) -> Arc<Slot> {
         self.slots
@@ -436,12 +456,28 @@ impl Inner {
         } else {
             PathBuf::from(&spec.working_dir)
         };
+        // Keep-running services write to a file, not pipes, so they survive Orbit exiting.
+        // shortcut: this raw file is truncated at each start but not rotated while running.
+        let raw_output = spec
+            .keep_running_on_quit
+            .then(|| self.logs_dir.join(format!("{id}.raw")));
+        if let Some(path) = &raw_output {
+            let _ = std::fs::create_dir_all(&self.logs_dir);
+            let _ = std::fs::write(path, b"");
+        }
         let launched = spawn(&SpawnSpec {
-            exe: PathBuf::from(&spec.executable),
+            // Spawn what preflight resolved, so `npm` finds `npm.cmd` (std only tries `.exe`).
+            exe: if spec.run_through_shell {
+                PathBuf::from(&spec.executable)
+            } else {
+                preflight::resolve_executable(&spec.executable)
+                    .unwrap_or_else(|| PathBuf::from(&spec.executable))
+            },
             args: spec.args.clone(),
             cwd,
             env,
             through_shell: spec.run_through_shell,
+            output_file: raw_output.clone(),
         });
         let ManagedProcess {
             id: proc_id,
@@ -461,24 +497,29 @@ impl Inner {
         let started_at = now_ms();
         let _ = processes::save(&self.db, id, &proc_id, started_at as i64);
         self.note(id, "started", &format!("Started (pid {}).", proc_id.pid));
-        let rt = {
+        let job = Arc::new(job);
+        let (rt, stop_already_requested) = {
             let mut st = slot.state.lock().unwrap();
             st.proc = Some(ProcHandle {
                 id: proc_id,
-                job: Some(Arc::new(job)),
+                job: Some(job.clone()),
             });
             st.rt.pid = Some(proc_id.pid);
             st.rt.parent_pid = Some(std::process::id());
             st.rt.started_at_ms = Some(started_at);
-            st.rt.clone()
+            (st.rt.clone(), st.stop_requested)
         };
         (self.emit)(&rt);
+        // A stop that arrived while we were still launching found no process to signal.
+        if stop_already_requested {
+            self.terminate(&proc_id, Some(&job));
+        }
 
         let me = self.clone();
         let sid = id.to_string();
         std::thread::Builder::new()
             .name(format!("watch-{id}"))
-            .spawn(move || me.watch(&sid, spec, child, stdout, stderr, sink))
+            .spawn(move || me.watch(&sid, spec, child, (stdout, stderr), raw_output, sink))
             .map_err(|e| {
                 AppError::new(ErrorKind::Os, format!("Could not watch the service: {e}"))
             })?;
@@ -522,12 +563,23 @@ impl Inner {
         id: &str,
         spec: ServiceSpec,
         mut child: Child,
-        stdout: Option<ChildStdout>,
-        stderr: Option<ChildStderr>,
+        (stdout, stderr): (Option<ChildStdout>, Option<ChildStderr>),
+        tail: Option<PathBuf>,
         sink: Arc<LogSink>,
     ) {
         let slot = self.slot(id);
+        let done = Arc::new(AtomicBool::new(false));
         let mut pumps = Vec::new();
+        if let Some(file) = tail.and_then(|p| std::fs::File::open(p).ok()) {
+            let sink = sink.clone();
+            let reader = TailReader {
+                file,
+                done: done.clone(),
+            };
+            pumps.push(std::thread::spawn(move || {
+                pump(reader, Stream::Stdout, &sink)
+            }));
+        }
         if let Some(r) = stdout {
             let sink = sink.clone();
             pumps.push(std::thread::spawn(move || pump(r, Stream::Stdout, &sink)));
@@ -542,7 +594,6 @@ impl Inner {
         let started = Instant::now();
         // With a health check, readiness comes from the probe thread, not from surviving a grace.
         let mut ready = spec.health.is_some();
-        let done = Arc::new(AtomicBool::new(false));
         if let Some(check) = spec.health.clone() {
             let me = self.clone();
             let id = id.to_string();
@@ -573,6 +624,18 @@ impl Inner {
         };
 
         done.store(true, Ordering::SeqCst);
+
+        // The root is gone, so nothing of this service should outlive it: end any grandchildren.
+        let job = slot
+            .state
+            .lock()
+            .unwrap()
+            .proc
+            .as_ref()
+            .and_then(|p| p.job.clone());
+        if let Some(job) = job {
+            let _ = terminate_tree(&job);
+        }
 
         // Give the pipes a moment to drain, but never wait on a grandchild that still holds them.
         let drain = Instant::now();

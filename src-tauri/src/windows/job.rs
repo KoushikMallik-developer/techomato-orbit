@@ -38,6 +38,9 @@ pub struct SpawnSpec {
     pub env: Vec<(String, String)>,
     /// Explicit opt-in: run as `cmd /C <exe> <args>`. Off by default.
     pub through_shell: bool,
+    /// Send stdout and stderr (merged) to this file instead of pipes. A pipe's read end lives in
+    /// Orbit, so a service that must outlive Orbit would die on its next write after Orbit exits.
+    pub output_file: Option<PathBuf>,
 }
 
 pub struct ManagedProcess {
@@ -67,11 +70,24 @@ pub fn spawn(spec: &SpawnSpec) -> AppResult<ManagedProcess> {
         c.args(&spec.args);
         c
     };
+    let (out, err) = match &spec.output_file {
+        Some(path) => {
+            let open = |e| os_error("Could not open the service's output file", e);
+            let f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .map_err(open)?;
+            let g = f.try_clone().map_err(open)?;
+            (Stdio::from(f), Stdio::from(g))
+        }
+        None => (Stdio::piped(), Stdio::piped()),
+    };
     cmd.current_dir(&spec.cwd)
         .envs(spec.env.iter().map(|(k, v)| (k, v)))
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(out)
+        .stderr(err)
         // Own process group so Ctrl+Break can target it; no console window.
         .creation_flags((CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW).0);
 

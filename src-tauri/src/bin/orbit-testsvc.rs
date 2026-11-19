@@ -85,6 +85,31 @@ fn main() {
         }
         "exit" => std::process::exit(arg(1).parse().expect("code")),
         "crash" => panic!("orbit-testsvc crash"),
+        // Writes a line every 100 ms; exits with 70 the moment a write fails (a closed pipe).
+        "chatty" => {
+            let mut n = 0u64;
+            loop {
+                n += 1;
+                let mut out = std::io::stdout().lock();
+                if writeln!(out, "tick {n}")
+                    .and_then(|()| out.flush())
+                    .is_err()
+                {
+                    std::process::exit(70);
+                }
+                drop(out);
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+        // Starts a grandchild, then exits on its own: the grandchild is left behind.
+        "orphan" => {
+            let me = std::env::current_exe().unwrap();
+            #[allow(clippy::zombie_processes)]
+            let child = Command::new(me).args(["serve", arg(1)]).spawn().unwrap();
+            println!("CHILD {}", child.id());
+            let _ = std::io::stdout().flush();
+            std::thread::sleep(Duration::from_millis(1500));
+        }
         "spawn-child" => {
             let me = std::env::current_exe().unwrap();
             // Deliberately never waited on: the test needs a live grandchild.

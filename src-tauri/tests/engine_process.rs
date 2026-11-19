@@ -21,6 +21,7 @@ fn spec(exe: impl Into<PathBuf>, args: &[&str]) -> SpawnSpec {
         cwd: std::env::temp_dir(),
         env: vec![],
         through_shell: false,
+        output_file: None,
     }
 }
 
@@ -194,4 +195,40 @@ fn run_through_shell_is_explicit_and_works() {
     p.stdout.take().unwrap().read_to_string(&mut text).unwrap();
     assert!(text.contains("hi there"), "{text:?}");
     let _ = p.child.wait();
+}
+
+/// Control: this is why services that must outlive Orbit cannot use pipes.
+#[test]
+#[ignore]
+fn a_child_whose_pipe_reader_is_gone_dies_on_its_next_write() {
+    let mut p = spawn(&spec(SVC, &["chatty"])).unwrap();
+    drop(p.stdout.take());
+    drop(p.stderr.take());
+    std::thread::sleep(Duration::from_millis(1200));
+    let exited = p.child.try_wait().unwrap();
+    if exited.is_none() {
+        terminate_tree(&p.job).unwrap();
+    }
+    assert_eq!(exited.and_then(|s| s.code()), Some(70));
+}
+
+#[test]
+#[ignore]
+fn file_backed_output_has_no_pipe_so_the_child_outlives_the_reader() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("out.raw");
+    let mut s = spec(SVC, &["chatty"]);
+    s.output_file = Some(out.clone());
+    let mut p = spawn(&s).unwrap();
+    assert!(
+        p.stdout.is_none() && p.stderr.is_none(),
+        "no pipes to Orbit"
+    );
+    std::thread::sleep(Duration::from_millis(1200));
+    let alive = p.child.try_wait().unwrap().is_none();
+    terminate_tree(&p.job).unwrap();
+    let _ = p.child.wait();
+    assert!(alive, "the child must keep running with nobody reading");
+    let text = std::fs::read_to_string(out).unwrap();
+    assert!(text.lines().count() >= 3, "{text:?}");
 }

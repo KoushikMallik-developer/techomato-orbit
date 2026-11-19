@@ -29,10 +29,26 @@ impl PreflightIssue {
 
 /// True if something is already listening on `port`.
 pub fn port_in_use(port: u16) -> bool {
-    std::net::TcpListener::bind(("0.0.0.0", port)).is_err()
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
+    if std::net::TcpListener::bind(("0.0.0.0", port)).is_err() {
+        return true;
+    }
+    // An IPv4 bind does not notice a listener that is only on [::1] (Node and Vite often are).
+    [
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(Ipv6Addr::LOCALHOST),
+    ]
+    .iter()
+    .any(|ip| {
+        TcpStream::connect_timeout(
+            &SocketAddr::new(*ip, port),
+            std::time::Duration::from_millis(200),
+        )
+        .is_ok()
+    })
 }
 
-fn resolve_executable(exe: &str) -> Option<PathBuf> {
+pub fn resolve_executable(exe: &str) -> Option<PathBuf> {
     let has_dir = exe.contains(['/', '\\']) || Path::new(exe).is_absolute();
     let exts: Vec<String> = std::env::var("PATHEXT")
         .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into())
@@ -150,6 +166,14 @@ mod tests {
         assert!(port_in_use(port));
         drop(l);
         assert!(!port_in_use(port));
+    }
+
+    #[test]
+    fn the_real_port_probe_sees_an_ipv6_only_listener() {
+        let Ok(l) = std::net::TcpListener::bind("[::1]:0") else {
+            return; // this machine has no IPv6 loopback
+        };
+        assert!(port_in_use(l.local_addr().unwrap().port()));
     }
 
     #[test]

@@ -21,7 +21,7 @@ pub fn run_once(check: &HealthCheck) -> HealthResult {
     let outcome = match check {
         HealthCheck::Tcp {
             port, timeout_secs, ..
-        } => connect("127.0.0.1", *port, secs(*timeout_secs)).map(|_| ()),
+        } => connect_loopback(*port, secs(*timeout_secs)).map(|_| ()),
         HealthCheck::Http {
             url,
             min_status,
@@ -56,14 +56,27 @@ fn secs(n: u32) -> Duration {
     Duration::from_secs(u64::from(n.max(1)))
 }
 
+/// Tries every address the host resolves to (a `localhost` service may be on IPv6 only).
 fn connect(host: &str, port: u16, timeout: Duration) -> Result<TcpStream, String> {
-    let addr = (host, port)
+    let addrs: Vec<_> = (host, port)
         .to_socket_addrs()
         .map_err(|e| format!("Could not resolve {host}: {e}"))?
-        .next()
-        .ok_or_else(|| format!("Could not resolve {host}."))?;
-    TcpStream::connect_timeout(&addr, timeout)
-        .map_err(|e| format!("Could not connect to {host}:{port}: {e}"))
+        .collect();
+    let mut last = format!("Could not resolve {host}.");
+    for addr in addrs {
+        match TcpStream::connect_timeout(&addr, timeout) {
+            Ok(s) => return Ok(s),
+            Err(e) => last = format!("Could not connect to {host}:{port}: {e}"),
+        }
+    }
+    Err(last)
+}
+
+/// A TCP health check targets the local machine: IPv4 loopback first, then IPv6.
+fn connect_loopback(port: u16, timeout: Duration) -> Result<TcpStream, String> {
+    connect("127.0.0.1", port, timeout)
+        .or_else(|_| connect("::1", port, timeout))
+        .map_err(|_| format!("Nothing is listening on port {port} (tried 127.0.0.1 and ::1)."))
 }
 
 /// Minimal HTTP/1.1 GET over std TCP, localhost-style use, no new dependency.
@@ -199,6 +212,15 @@ mod tests {
         assert_eq!(run_once(&tcp(port)), HealthResult::Healthy);
         drop(l);
         assert!(matches!(run_once(&tcp(port)), HealthResult::Unhealthy(_)));
+    }
+
+    #[test]
+    fn tcp_sees_a_service_listening_only_on_ipv6_loopback() {
+        let Ok(l) = TcpListener::bind("[::1]:0") else {
+            return; // this machine has no IPv6 loopback
+        };
+        let port = l.local_addr().unwrap().port();
+        assert_eq!(run_once(&tcp(port)), HealthResult::Healthy);
     }
 
     #[test]
