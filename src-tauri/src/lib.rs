@@ -4,6 +4,7 @@ pub mod elevated;
 pub mod engine;
 pub mod error;
 pub mod models;
+pub mod pm;
 pub mod repo;
 pub mod secrets;
 pub mod shortcuts;
