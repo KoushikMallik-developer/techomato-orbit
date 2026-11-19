@@ -40,6 +40,10 @@ export const CMD = {
   winserviceStart: 'winservice_start',
   winserviceStop: 'winservice_stop',
   winserviceRestart: 'winservice_restart',
+  autostartGet: 'autostart_get',
+  autostartSet: 'autostart_set',
+  shortcutsStatus: 'shortcuts_status',
+  launchedInBackground: 'launched_in_background',
   pickPath: 'pick_path',
 } as const;
 

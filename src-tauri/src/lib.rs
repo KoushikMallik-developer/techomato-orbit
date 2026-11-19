@@ -6,6 +6,7 @@ pub mod error;
 pub mod models;
 pub mod repo;
 pub mod secrets;
+pub mod shortcuts;
 pub mod single_instance;
 pub mod tray;
 pub mod windows;
@@ -30,6 +31,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(shortcuts::plugin())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--background"]),
+        ))
+        .manage(shortcuts::Shortcuts::default())
         .on_window_event(|window, event| {
             // Closing the window hides it to the tray; Quit in the tray menu really exits.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -91,6 +98,8 @@ pub fn run() {
                     app.manage(secrets);
                     app.manage(sup);
                     tray::setup(app)?;
+                    *app.state::<shortcuts::Shortcuts>().0.lock().unwrap() =
+                        shortcuts::register_all(app.handle());
                     Ok(())
                 }
                 Err(e) => {
@@ -141,6 +150,10 @@ pub fn run() {
             commands::winservices::winservice_list,
             commands::winservices::winservice_pins,
             commands::winservices::winservice_set_pins,
+            commands::notifications::launched_in_background,
+            commands::notifications::autostart_get,
+            commands::notifications::autostart_set,
+            commands::notifications::shortcuts_status,
             commands::winservices::winservice_start,
             commands::winservices::winservice_stop,
             commands::winservices::winservice_restart,

@@ -89,6 +89,7 @@ pub async fn project_start(
     selection: Option<Vec<String>>,
 ) -> AppResult<ProjectRunReport> {
     let (db, sup) = (db.inner().clone(), sup.inner().clone());
+    let _ = crate::repo::settings::set(&db, crate::shortcuts::LAST_PROJECT_KEY, &id);
     run(app, move |emit| {
         projects::start_project(&sup, &db, &id, selection, emit)
     })

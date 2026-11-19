@@ -1,5 +1,8 @@
 import { useEffect, type ReactNode } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { z } from 'zod';
+import { CMD } from '@/shared/ipc/commands';
+import { ipc } from '@/shared/ipc/invoke';
 import { useAppSelector } from './store';
 
 const inTauri = () => '__TAURI_INTERNALS__' in window;
@@ -15,9 +18,11 @@ export function Bootstrap({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!inTauri()) return;
     let cancelled = false;
-    void document.fonts.ready.then(() =>
+    // Started by Windows at sign-in: stay in the tray; the tray's Open shows the window.
+    const background = ipc(CMD.launchedInBackground, {}, z.boolean()).catch(() => false);
+    void Promise.all([document.fonts.ready, background]).then(([, hidden]) =>
       requestAnimationFrame(() => {
-        if (!cancelled) void getCurrentWindow().show();
+        if (!cancelled && !hidden) void getCurrentWindow().show();
       }),
     );
     return () => {

@@ -3,17 +3,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { CMD } from '@/shared/ipc/commands';
 import { ipc, ipcVoid } from '@/shared/ipc/invoke';
+import { usePollInterval } from '@/features/settings/api/usePrefs';
 import { PortRowSchema, type PortRow } from './ports.schema';
 
 export const portsKey = ['ports'] as const;
 
 /** Polls every 2 s while the page is mounted and the window is visible. */
 export function usePorts() {
+  const interval = usePollInterval(2_000);
   return useQuery({
     queryKey: portsKey,
     queryFn: () => ipc(CMD.portsList, {}, z.array(PortRowSchema)),
-    refetchInterval: 2_000,
-    refetchIntervalInBackground: false,
+    refetchInterval: interval,
   });
 }
 

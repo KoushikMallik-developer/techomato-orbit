@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { CMD, type CmdName } from '@/shared/ipc/commands';
 import { ipc, ipcVoid } from '@/shared/ipc/invoke';
+import { usePollInterval } from '@/features/settings/api/usePrefs';
 import { WinServiceSchema } from './winservices.schema';
 
 const listKey = ['winservices'] as const;
@@ -9,11 +10,11 @@ const pinsKey = ['winservices', 'pins'] as const;
 
 /** Always fetches every service; the page filters, so the toggle is instant. */
 export function useWinServices() {
+  const interval = usePollInterval(5_000);
   return useQuery({
     queryKey: listKey,
     queryFn: () => ipc(CMD.winserviceList, { all: true }, z.array(WinServiceSchema)),
-    refetchInterval: 5_000,
-    refetchIntervalInBackground: false,
+    refetchInterval: interval,
   });
 }
 

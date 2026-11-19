@@ -73,3 +73,38 @@ pub async fn prefs_get(db: State<'_, Arc<Db>>) -> AppResult<Prefs> {
 pub async fn prefs_set(db: State<'_, Arc<Db>>, prefs: Prefs) -> AppResult<()> {
     settings::set_prefs(&db, &prefs)
 }
+
+/// Whether Orbit starts with Windows (registry Run key, managed by the autostart plugin).
+#[tauri::command]
+pub async fn autostart_get(app: tauri::AppHandle) -> AppResult<bool> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|e| crate::error::AppError::new(crate::error::ErrorKind::Os, e.to_string()))
+}
+
+#[tauri::command]
+pub async fn autostart_set(app: tauri::AppHandle, enabled: bool) -> AppResult<()> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launch = app.autolaunch();
+    let result = if enabled {
+        launch.enable()
+    } else {
+        launch.disable()
+    };
+    result.map_err(|e| crate::error::AppError::new(crate::error::ErrorKind::Os, e.to_string()))
+}
+
+/// Which global shortcuts are active, and why any are not.
+#[tauri::command]
+pub async fn shortcuts_status(
+    state: State<'_, crate::shortcuts::Shortcuts>,
+) -> AppResult<Vec<crate::shortcuts::ShortcutStatus>> {
+    Ok(state.0.lock().unwrap().clone())
+}
+
+/// True when Windows started Orbit at sign-in; the window then stays in the tray.
+#[tauri::command]
+pub fn launched_in_background() -> bool {
+    std::env::args().any(|a| a == "--background")
+}
