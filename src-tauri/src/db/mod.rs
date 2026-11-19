@@ -8,7 +8,13 @@ use std::sync::Mutex;
 pub struct Db(pub Mutex<Connection>);
 
 /// Ordered `(version, sql)`; each is applied in its own transaction.
-const MIGRATIONS: &[(u32, &str)] = &[(1, include_str!("migrations/0001_init.sql"))];
+const MIGRATIONS: &[(u32, &str)] = &[
+    (1, include_str!("migrations/0001_init.sql")),
+    (
+        2,
+        include_str!("migrations/0002_projects_notifications.sql"),
+    ),
+];
 
 pub const SCHEMA_VERSION: u32 = MIGRATIONS[MIGRATIONS.len() - 1].0;
 
@@ -73,12 +79,15 @@ pub fn open_in_memory() -> AppResult<Db> {
 mod tests {
     use super::*;
 
-    const TABLES: [&str; 5] = [
+    const TABLES: [&str; 8] = [
         "services",
         "service_env",
         "service_processes",
         "activity_history",
         "settings",
+        "projects",
+        "service_deps",
+        "notifications",
     ];
 
     fn version(db: &Db) -> u32 {

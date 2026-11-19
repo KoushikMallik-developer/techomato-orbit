@@ -28,6 +28,7 @@ pub fn run() {
     };
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .on_window_event(|window, event| {
             // Closing the window hides it to the tray; Quit in the tray menu really exits.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -43,6 +44,11 @@ pub fn run() {
                     let secrets: Arc<dyn SecretStore> =
                         Arc::new(windows::creds::CredentialManagerStore);
                     let handle = app.handle().clone();
+                    let notify_db = database.clone();
+                    // Last runtime seen per service, so each change can be turned into a notice.
+                    let last: std::sync::Mutex<
+                        std::collections::HashMap<String, engine::supervisor::ServiceRuntime>,
+                    > = Default::default();
                     let sup = engine::supervisor::Supervisor::new(
                         database.clone(),
                         secrets.clone(),
@@ -50,6 +56,29 @@ pub fn run() {
                         std::env::current_exe()?,
                         Arc::new(move |rt| {
                             let _ = handle.emit("service://status", rt);
+                            let prev = last.lock().unwrap().insert(rt.id.clone(), rt.clone());
+                            if prev.as_ref() == Some(rt) {
+                                return;
+                            }
+                            let (Ok(prefs), Ok(spec)) = (
+                                repo::settings::prefs(&notify_db),
+                                repo::services::get(&notify_db, &rt.id),
+                            ) else {
+                                return;
+                            };
+                            if let Some(n) = engine::notify::notice_for(
+                                prev.as_ref(),
+                                rt,
+                                &spec.name,
+                                &prefs.notify,
+                            ) {
+                                commands::notifications::deliver(
+                                    &handle,
+                                    &notify_db,
+                                    &n,
+                                    Some(&rt.id),
+                                );
+                            }
                         }),
                     );
                     let log_handle = app.handle().clone();
@@ -92,6 +121,11 @@ pub fn run() {
             commands::ports::ports_list,
             commands::ports::port_check,
             commands::ports::port_end_process,
+            commands::notifications::notification_list,
+            commands::notifications::notification_clear,
+            commands::notifications::notify_port_conflict,
+            commands::notifications::prefs_get,
+            commands::notifications::prefs_set,
             commands::pick_path,
         ])
         .run(tauri::generate_context!())

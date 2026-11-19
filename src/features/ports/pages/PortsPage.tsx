@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useAppDispatch } from '@/app/store';
 import { pushToast } from '@/app/uiSlice';
+import { CMD } from '@/shared/ipc/commands';
+import { ipcVoid } from '@/shared/ipc/invoke';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
 import type { PortRow } from '../api/ports.schema';
@@ -30,12 +32,12 @@ export function PortsPage() {
   const [checked, setChecked] = useState<{ port: number; busy: boolean } | null>(null);
 
   const onConflict = useCallback(
-    (r: PortRow) =>
-      dispatch(
-        pushToast(
-          `Watched port ${r.port} is in use by ${r.processName ?? 'another program'} (PID ${r.pid}).`,
-        ),
-      ),
+    (r: PortRow) => {
+      const who = r.processName ?? 'another program';
+      dispatch(pushToast(`Watched port ${r.port} is in use by ${who} (PID ${r.pid}).`));
+      // Also raises the native notification and records it in the history.
+      ipcVoid(CMD.notifyPortConflict, { port: r.port, process: who, pid: r.pid }).catch(() => {});
+    },
     [dispatch],
   );
   useWatchAlerts(ports.data, watch, onConflict);

@@ -18,6 +18,11 @@ export const CMD = {
   portsList: 'ports_list',
   portCheck: 'port_check',
   portEndProcess: 'port_end_process',
+  notificationList: 'notification_list',
+  notificationClear: 'notification_clear',
+  notifyPortConflict: 'notify_port_conflict',
+  prefsGet: 'prefs_get',
+  prefsSet: 'prefs_set',
   pickPath: 'pick_path',
 } as const;
 
