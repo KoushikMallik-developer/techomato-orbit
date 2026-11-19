@@ -89,7 +89,7 @@ export function SettingsPage() {
           {shortcuts.data?.map((s) => (
             <li key={s.accelerator} className="flex flex-wrap items-center gap-3">
               <kbd className="rounded border border-border bg-raised px-2 py-0.5 font-mono text-xs">
-                {s.accelerator}
+                {s.accelerator.replace('Super', 'Win')}
               </kbd>
               <span>{s.label}</span>
               {s.error && (
