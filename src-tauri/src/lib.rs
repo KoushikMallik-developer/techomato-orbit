@@ -9,7 +9,7 @@ pub mod windows;
 
 use secrets::{InMemorySecretStore, SecretStore};
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 /// `%APPDATA%\Techomato Orbit`
@@ -25,9 +25,23 @@ pub fn run() {
             let dir = data_dir(app)?;
             match db::open(&dir.join("orbit.db")) {
                 Ok(database) => {
-                    app.manage(database);
+                    let database = Arc::new(database);
                     // Replaced by the Windows Credential Manager store in the secrets task.
-                    app.manage::<Arc<dyn SecretStore>>(Arc::new(InMemorySecretStore::default()));
+                    let secrets: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::default());
+                    let handle = app.handle().clone();
+                    let sup = engine::supervisor::Supervisor::new(
+                        database.clone(),
+                        secrets.clone(),
+                        dir.join("logs"),
+                        std::env::current_exe()?,
+                        Arc::new(move |rt| {
+                            let _ = handle.emit("service://status", rt);
+                        }),
+                    );
+                    sup.adopt_on_startup();
+                    app.manage(database);
+                    app.manage(secrets);
+                    app.manage(sup);
                     Ok(())
                 }
                 Err(e) => {
@@ -46,6 +60,11 @@ pub fn run() {
             commands::services::service_create,
             commands::services::service_update,
             commands::services::service_delete,
+            commands::services::service_start,
+            commands::services::service_stop,
+            commands::services::service_force_stop,
+            commands::services::service_restart,
+            commands::services::service_runtime_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Techomato Orbit");

@@ -1,6 +1,7 @@
 use crate::commands::confirm_action;
 use crate::db::Db;
-use crate::error::AppResult;
+use crate::engine::supervisor::{ServiceRuntime, Supervisor};
+use crate::error::{AppError, AppResult, ErrorKind};
 use crate::models::service::ServiceSpec;
 use crate::repo::services as repo;
 use crate::secrets::SecretStore;
@@ -10,18 +11,18 @@ use tauri::{AppHandle, State};
 type Secrets<'a> = State<'a, Arc<dyn SecretStore>>;
 
 #[tauri::command]
-pub async fn service_list(db: State<'_, Db>) -> AppResult<Vec<ServiceSpec>> {
+pub async fn service_list(db: State<'_, Arc<Db>>) -> AppResult<Vec<ServiceSpec>> {
     repo::list(&db)
 }
 
 #[tauri::command]
-pub async fn service_get(db: State<'_, Db>, id: String) -> AppResult<ServiceSpec> {
+pub async fn service_get(db: State<'_, Arc<Db>>, id: String) -> AppResult<ServiceSpec> {
     repo::get(&db, &id)
 }
 
 #[tauri::command]
 pub async fn service_create(
-    db: State<'_, Db>,
+    db: State<'_, Arc<Db>>,
     secrets: Secrets<'_>,
     spec: ServiceSpec,
 ) -> AppResult<ServiceSpec> {
@@ -30,7 +31,7 @@ pub async fn service_create(
 
 #[tauri::command]
 pub async fn service_update(
-    db: State<'_, Db>,
+    db: State<'_, Arc<Db>>,
     secrets: Secrets<'_>,
     spec: ServiceSpec,
 ) -> AppResult<ServiceSpec> {
@@ -40,11 +41,18 @@ pub async fn service_update(
 #[tauri::command]
 pub async fn service_delete(
     app: AppHandle,
-    db: State<'_, Db>,
+    db: State<'_, Arc<Db>>,
     secrets: Secrets<'_>,
+    sup: State<'_, Supervisor>,
     id: String,
 ) -> AppResult<()> {
     let spec = repo::get(&db, &id)?;
+    if sup.runtime(&id).status != crate::engine::state::Status::Stopped {
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            "Stop this service before deleting it.",
+        ));
+    }
     confirm_action(
         &app,
         "Delete service",
@@ -55,4 +63,54 @@ pub async fn service_delete(
         "Delete",
     )?;
     repo::delete(&db, secrets.inner().as_ref(), &id)
+}
+
+/// Lifecycle calls block (stop waits for the process), so they run off the async runtime.
+async fn blocking<T: Send + 'static>(
+    f: impl FnOnce() -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| AppError::new(ErrorKind::Internal, e.to_string()))?
+}
+
+#[tauri::command]
+pub async fn service_start(sup: State<'_, Supervisor>, id: String) -> AppResult<()> {
+    let sup = sup.inner().clone();
+    blocking(move || sup.start(&id)).await
+}
+
+#[tauri::command]
+pub async fn service_stop(sup: State<'_, Supervisor>, id: String) -> AppResult<()> {
+    let sup = sup.inner().clone();
+    blocking(move || sup.stop(&id, false)).await
+}
+
+#[tauri::command]
+pub async fn service_force_stop(
+    app: AppHandle,
+    sup: State<'_, Supervisor>,
+    db: State<'_, Arc<Db>>,
+    id: String,
+) -> AppResult<()> {
+    let name = repo::get(&db, &id)?.name;
+    confirm_action(
+        &app,
+        "Force stop",
+        &format!("Force stop \"{name}\"? It is ended immediately and may lose unsaved work."),
+        "Force stop",
+    )?;
+    let sup = sup.inner().clone();
+    blocking(move || sup.stop(&id, true)).await
+}
+
+#[tauri::command]
+pub async fn service_restart(sup: State<'_, Supervisor>, id: String) -> AppResult<()> {
+    let sup = sup.inner().clone();
+    blocking(move || sup.restart(&id)).await
+}
+
+#[tauri::command]
+pub async fn service_runtime_list(sup: State<'_, Supervisor>) -> AppResult<Vec<ServiceRuntime>> {
+    sup.all_runtime()
 }
