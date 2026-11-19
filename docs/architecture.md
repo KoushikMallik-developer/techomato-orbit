@@ -112,6 +112,23 @@ Events added: `project://progress` (`{projectId, serviceId, step}`).
 **Not covered by automated tests:** the real UAC prompt and elevated service control, native toast
 display, tray menu clicks, and pressing the global shortcuts (registration is checked).
 
+## Plan 3 additions: Packages
+
+`src-tauri/src/pm/` is the package-manager layer: `parse.rs` turns captured output into `Package`
+rows (winget fixed-width table cut at the header offsets, Chocolatey `--limit-output`, Scoop JSON and
+tables), `args.rs` validates ids and search text and builds argument arrays, `run.rs` finds the
+manager and runs it with a timeout while streaming lines. `commands/packages.rs` exposes
+`pm_managers`, `pm_installed`, `pm_outdated`, `pm_search`, `pm_install`, `pm_upgrade`,
+`pm_upgrade_all`, `pm_uninstall`; changes emit `pm://output` and one change per manager runs at a time.
+
+Rules: nothing is ever joined into a shell string; ids allow only letters, digits and `. _ - + @ / :`
+(so Add/Remove Programs and Store entries are listed but not manageable); uninstall and upgrade-all
+confirm natively in Rust; Chocolatey changes are not elevated by Orbit and report that they need an
+administrator. Scoop runs through Windows PowerShell with `-File` so arguments stay literal.
+
+The Terminal module planned for Plan 3 was dropped by the user; the `terminal` module preference
+still exists but has no screen.
+
 ## Known gaps (tracked for later plans)
 
 - `https://` health URLs are only checked as a TCP connect (no TLS stack).

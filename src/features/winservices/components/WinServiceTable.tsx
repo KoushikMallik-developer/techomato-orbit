@@ -1,5 +1,7 @@
+import { Lock } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { Pill } from '@/shared/ui/Pill';
+import { tableWrap, td, th, tr } from '@/shared/ui/table';
 import type { WinService } from '../api/winservices.schema';
 import type { WinControl } from '../api/useWinServices';
 import { winActions } from '../winFilter';
@@ -12,8 +14,6 @@ type Props = {
   onTogglePin: (name: string) => void;
 };
 
-const th = 'px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-fg-muted';
-const td = 'px-3 py-2 align-top text-sm';
 const START: Record<WinService['startType'], string> = {
   auto: 'Automatic',
   autoDelayed: 'Automatic (delayed)',
@@ -35,7 +35,7 @@ const STATE: Record<WinService['state'], string> = {
 export function WinServiceTable({ rows, pins, busy, onControl, onTogglePin }: Props) {
   const pinned = (n: string) => pins.some((p) => p.toLowerCase() === n.toLowerCase());
   return (
-    <div className="overflow-x-auto rounded-card border border-border bg-paper">
+    <div className={tableWrap}>
       <table className="w-full min-w-[48rem] border-collapse">
         <thead>
           <tr className="border-b border-border">
@@ -50,20 +50,30 @@ export function WinServiceTable({ rows, pins, busy, onControl, onTogglePin }: Pr
           {rows.map((s) => {
             const can = winActions(s.state, s.protected);
             return (
-              <tr key={s.name} className="border-b border-border last:border-0">
+              <tr key={s.name} className={tr}>
                 <td className={td}>
                   <div className="font-medium">
                     {s.displayName}
                     {s.protected && (
                       <span className="ml-2" title="Part of Windows; Orbit does not manage it">
-                        <Pill>🔒 Protected</Pill>
+                        <Pill>
+                          <Lock aria-hidden className="size-3" />
+                          Protected
+                        </Pill>
                       </span>
                     )}
                   </div>
                   <div className="font-mono text-xs text-fg-muted">{s.name}</div>
                 </td>
                 <td className={td}>
-                  <Pill on={s.state === 'running'}>{STATE[s.state]}</Pill>
+                  <Pill
+                    dot
+                    tone={
+                      s.state === 'running' ? 'running' : s.state === 'stopped' ? 'neutral' : 'warn'
+                    }
+                  >
+                    {STATE[s.state]}
+                  </Pill>
                 </td>
                 <td className={td}>{START[s.startType]}</td>
                 <td className={`${td} font-mono`}>{s.pid ?? '—'}</td>

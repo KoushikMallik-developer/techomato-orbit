@@ -1,9 +1,11 @@
 import { Card } from '@/shared/ui/Card';
+import { PageHeader } from '@/shared/ui/PageHeader';
 import { useAutostart, usePrefs, useSetPrefs, useShortcuts, type Prefs } from '../api/usePrefs';
 
 const MODULES: { key: keyof Prefs['modules']; label: string }[] = [
   { key: 'projects', label: 'Projects' },
   { key: 'ports', label: 'Ports' },
+  { key: 'packages', label: 'Packages' },
   { key: 'winservices', label: 'Windows services' },
 ];
 
@@ -36,11 +38,11 @@ export function SettingsPage() {
   const shortcuts = useShortcuts();
   const autostart = useAutostart();
   const p = prefs.data;
-  if (!p) return <h1 className="text-3xl font-extrabold">Settings</h1>;
+  if (!p) return <PageHeader title="Settings" />;
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <h1 className="text-3xl font-extrabold">Settings</h1>
+      <PageHeader title="Settings" summary="Applies immediately and is remembered" />
       <Card>
         <h2 className="mb-2 text-lg font-bold">Startup</h2>
         <Check

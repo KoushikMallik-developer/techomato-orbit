@@ -1,0 +1,11 @@
+Name                                                         Id                                     Version         Available      Source
+-----------------------------------------------------------------------------------------------------------------------------------------
+7-Zip 22.01                                                  7zip.7zip                              22.01           26.06          winget
+Blender                                                      BlenderFoundation.Blender              5.2.2           5.3.0          winget
+ChatGPT                                                      OpenAI.ChatGPT                         26.1111.2228.0  26.1111.9664.0 winget
+Cloudflare WARP                                              Cloudflare.Warp                        25.6.1400.0     26.8.2115.0    winget
+CPUID CPU-Z 2.13                                             CPUID.CPU-Z                            2.13            3.02           winget
+Docker Desktop                                               Docker.DockerDesktop                   4.93.0          4.99.0         winget
+DroidCam Client                                              dev47apps.DroidCam                     6.5.2           6.5.3          winget
+33 upgrades available.
+2 package(s) have version numbers that cannot be determined. Use --include-unknown to see all results.

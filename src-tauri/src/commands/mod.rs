@@ -2,6 +2,7 @@
 
 pub mod logs;
 pub mod notifications;
+pub mod packages;
 pub mod ports;
 pub mod projects;
 pub mod services;

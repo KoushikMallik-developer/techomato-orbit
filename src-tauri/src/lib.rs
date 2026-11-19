@@ -4,6 +4,7 @@ pub mod elevated;
 pub mod engine;
 pub mod error;
 pub mod models;
+pub mod pm;
 pub mod repo;
 pub mod secrets;
 pub mod shortcuts;
@@ -37,6 +38,7 @@ pub fn run() {
             Some(vec!["--background"]),
         ))
         .manage(shortcuts::Shortcuts::default())
+        .manage(commands::packages::PmBusy::default())
         .on_window_event(|window, event| {
             // Closing the window hides it to the tray; Quit in the tray menu really exits.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -157,6 +159,14 @@ pub fn run() {
             commands::winservices::winservice_start,
             commands::winservices::winservice_stop,
             commands::winservices::winservice_restart,
+            commands::packages::pm_managers,
+            commands::packages::pm_installed,
+            commands::packages::pm_outdated,
+            commands::packages::pm_search,
+            commands::packages::pm_install,
+            commands::packages::pm_upgrade,
+            commands::packages::pm_upgrade_all,
+            commands::packages::pm_uninstall,
             commands::pick_path,
         ])
         .run(tauri::generate_context!())

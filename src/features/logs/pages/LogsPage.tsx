@@ -8,6 +8,8 @@ import { CMD } from '@/shared/ipc/commands';
 import { ipc, ipcVoid } from '@/shared/ipc/invoke';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
+import { PageHeader } from '@/shared/ui/PageHeader';
+import { SearchInput, Select } from '@/shared/ui/Field';
 import { useLogBuffer } from '../api/useLogs';
 import { LogViewer } from '../components/LogViewer';
 import { filterLines, type Stream } from '../logFilter';
@@ -48,32 +50,34 @@ export function LogsPage() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-3xl font-extrabold">Logs</h1>
-        <select
-          aria-label="Service"
-          className="ml-auto rounded-full border border-border bg-paper px-4 py-2 text-sm"
-          value={serviceId ?? ''}
-          onChange={(e) => e.target.value && dispatch(showLogs(e.target.value))}
-        >
-          <option value="">Choose a service…</option>
-          {services.data?.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <PageHeader
+        title="Logs"
+        summary={serviceId ? 'Live output of the selected service' : 'Pick a service to follow'}
+        actions={
+          <Select
+            aria-label="Service"
+            value={serviceId ?? ''}
+            onChange={(e) => e.target.value && dispatch(showLogs(e.target.value))}
+          >
+            <option value="">Choose a service…</option>
+            {services.data?.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+        }
+      />
 
       {!serviceId ? (
         <Card>Choose a service to see its output.</Card>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <input
+            <SearchInput
               aria-label="Search logs"
               placeholder="Search…"
-              className="min-w-48 rounded-full border border-border bg-paper px-4 py-2 text-sm"
+              className="min-w-56"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />

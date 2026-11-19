@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { useAppDispatch } from '@/app/store';
 import { showLogs } from '@/app/uiSlice';
 import { Button } from '@/shared/ui/Button';
+import { ServerCog } from 'lucide-react';
 import { Card } from '@/shared/ui/Card';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { PageHeader } from '@/shared/ui/PageHeader';
 import { useDeleteService, useSaveService, useServices } from '../../api/useServices';
 import { useRuntime } from '../../api/useRuntime';
 import type { ServiceSpec } from '../../api/services.schema';
@@ -34,25 +37,35 @@ export function ServicesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center">
-        <h1 className="text-3xl font-extrabold">Services</h1>
-        <Button variant="primary" className="ml-auto" onClick={() => setEditing(null)}>
-          Add service
-        </Button>
-      </div>
+      <PageHeader
+        title="Services"
+        summary={
+          services.data
+            ? `${Object.values(runtime).filter((r) => r.status === 'running').length} running of ${services.data.length}`
+            : 'Loading services'
+        }
+        actions={
+          <Button variant="primary" onClick={() => setEditing(null)}>
+            Add service
+          </Button>
+        }
+      />
       {services.isError && (
         <Card role="alert" className="text-danger">
           Could not load services: {services.error.message}
         </Card>
       )}
       {services.data?.length === 0 && (
-        <Card>
-          <p className="font-medium">No services yet.</p>
-          <p className="text-sm text-fg-muted">
-            Add a command you run during development, like a dev server or a database, and Orbit
-            will start, stop and watch it for you.
-          </p>
-        </Card>
+        <EmptyState
+          icon={ServerCog}
+          title="No services yet"
+          hint="Add a command you run during development, like a dev server or a database, and Orbit will start, stop and watch it for you."
+          action={
+            <Button variant="primary" onClick={() => setEditing(null)}>
+              Add service
+            </Button>
+          }
+        />
       )}
       {services.data?.map((s) => (
         <ServiceRow

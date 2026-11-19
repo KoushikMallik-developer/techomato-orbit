@@ -31,3 +31,7 @@ Also: a Ports view (what is listening, who owns it, end a process, watch a port)
 Start/Stop/Restart through a single UAC prompt (Windows' own services are protected), desktop
 notifications with history, a Ctrl+K command palette, global shortcuts, and a Settings page
 (modules, notifications, start with Windows).
+
+Packages: browse, search, install, upgrade and uninstall software through winget, Chocolatey and
+Scoop (whichever are installed). Output streams live; uninstall and upgrade-all ask first.
+Chocolatey changes need Orbit started as administrator. Scoop support is untested on a real machine.

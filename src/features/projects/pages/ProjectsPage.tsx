@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Button } from '@/shared/ui/Button';
+import { FolderKanban } from 'lucide-react';
 import { Card } from '@/shared/ui/Card';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { PageHeader } from '@/shared/ui/PageHeader';
 import { useSaveService, useServices } from '@/features/services/api/useServices';
 import { useRuntime, useServiceActions } from '@/features/services/api/useRuntime';
 import type { Project } from '../api/projects.schema';
@@ -15,6 +18,8 @@ import {
 } from '../api/useProjects';
 import { ProjectCard } from '../components/ProjectCard';
 import { ProjectEditor } from '../components/ProjectEditor';
+
+const countLabel = (n: number) => `${n} ${n === 1 ? 'project' : 'projects'}`;
 
 export function ProjectsPage() {
   const projects = useProjects();
@@ -65,25 +70,30 @@ export function ProjectsPage() {
   const all = projects.data ?? [];
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center">
-        <h1 className="text-3xl font-extrabold">Projects</h1>
-        <Button variant="primary" className="ml-auto" onClick={() => setEditing(null)}>
-          New project
-        </Button>
-      </div>
+      <PageHeader
+        title="Projects"
+        summary={
+          projects.data
+            ? countLabel(projects.data.filter((p) => !p.archived).length)
+            : 'Loading projects'
+        }
+        actions={
+          <Button variant="primary" onClick={() => setEditing(null)}>
+            New project
+          </Button>
+        }
+      />
       {projects.isError && (
         <Card role="alert" className="text-danger">
           Could not load projects: {projects.error.message}
         </Card>
       )}
       {projects.data?.length === 0 && (
-        <Card>
-          <p className="font-medium">No projects yet.</p>
-          <p className="text-sm text-fg-muted">
-            A project groups the services of one application, like a database, an API and a web app,
-            so you can start them together in the right order.
-          </p>
-        </Card>
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet"
+          hint="A project groups the services of one application, like a database, an API and a web app, so you can start them together in the right order."
+        />
       )}
       {all.map((p) => (
         <ProjectCard

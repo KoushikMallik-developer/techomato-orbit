@@ -1,6 +1,6 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
-export type ModuleKey = 'services' | 'projects' | 'ports' | 'logs' | 'settings';
+export type ModuleKey = 'services' | 'projects' | 'ports' | 'packages' | 'logs' | 'settings';
 export type ThemePref = 'light' | 'dark';
 export type Toast = { id: number; text: string };
 

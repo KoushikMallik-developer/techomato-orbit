@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { Card } from '@/shared/ui/Card';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { SearchInput, Select } from '@/shared/ui/Field';
 import { usePins, useWinControl, useWinServices } from '../api/useWinServices';
 import { WinServiceTable } from '../components/WinServiceTable';
 import { filterWinServices, type StartFilter, type StateFilter } from '../winFilter';
-
-const input =
-  'rounded-full border-[1.5px] border-border bg-paper px-4 py-1.5 text-sm outline-none focus:border-fg';
 
 export function WindowsServicesSection() {
   const list = useWinServices();
@@ -27,26 +27,24 @@ export function WindowsServicesSection() {
         Windows services
       </h2>
       <div className="flex flex-wrap items-center gap-3">
-        <input
+        <SearchInput
           aria-label="Search Windows services"
           placeholder="Search name or PID"
-          className={`${input} w-64`}
+          className="w-72"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <select
+        <Select
           aria-label="State"
-          className={input}
           value={state}
           onChange={(e) => setState(e.target.value as StateFilter)}
         >
           <option value="all">Any state</option>
           <option value="running">Running</option>
           <option value="stopped">Stopped</option>
-        </select>
-        <select
+        </Select>
+        <Select
           aria-label="Start type"
-          className={input}
           value={start}
           onChange={(e) => setStart(e.target.value as StartFilter)}
         >
@@ -55,7 +53,7 @@ export function WindowsServicesSection() {
           <option value="autoDelayed">Automatic (delayed)</option>
           <option value="manual">Manual</option>
           <option value="disabled">Disabled</option>
-        </select>
+        </Select>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
           Show all Windows services
@@ -67,14 +65,15 @@ export function WindowsServicesSection() {
         </Card>
       )}
       {list.data && rows.length === 0 && (
-        <Card>
-          <p className="font-medium">No matching services.</p>
-          <p className="text-sm text-fg-muted">
-            {showAll
+        <EmptyState
+          icon={ShieldCheck}
+          title="No matching services"
+          hint={
+            showAll
               ? 'Nothing fits the current filters.'
-              : 'No development services found. Turn on Show all and pin the ones you use.'}
-          </p>
-        </Card>
+              : 'No development services found. Turn on Show all and pin the ones you use.'
+          }
+        />
       )}
       {rows.length > 0 && (
         <WinServiceTable
