@@ -156,7 +156,7 @@ pub fn list_endpoints() -> AppResult<Vec<Endpoint>> {
             );
         }
     }
-    let mut out: Vec<Endpoint> = raw
+    let out: Vec<Endpoint> = raw
         .into_iter()
         .map(|(proto, local_addr, port, state, pid)| {
             let (process_name, path) = info.get(&pid).cloned().unwrap_or((None, None));
@@ -172,11 +172,24 @@ pub fn list_endpoints() -> AppResult<Vec<Endpoint>> {
             }
         })
         .collect();
-    out.sort_by(|a, b| {
-        (a.port, a.proto as u8, &a.local_addr).cmp(&(b.port, b.proto as u8, &b.local_addr))
+    Ok(unique_rows(out))
+}
+
+/// Sorted by port, with one row per (protocol, address, port, owner): the UI uses those four as
+/// its row key.
+fn unique_rows(mut rows: Vec<Endpoint>) -> Vec<Endpoint> {
+    rows.sort_by(|a, b| {
+        (a.port, a.proto as u8, &a.local_addr, a.pid).cmp(&(
+            b.port,
+            b.proto as u8,
+            &b.local_addr,
+            b.pid,
+        ))
     });
-    out.dedup();
-    Ok(out)
+    rows.dedup_by(|b, a| {
+        a.proto == b.proto && a.local_addr == b.local_addr && a.port == b.port && a.pid == b.pid
+    });
+    rows
 }
 
 #[cfg(test)]
@@ -235,5 +248,31 @@ mod tests {
                 assert!(e.pid != std::process::id());
             }
         }
+    }
+
+    #[test]
+    fn sockets_of_one_process_on_the_same_address_and_port_become_one_row() {
+        // mDNS-style: two sockets, same proto/address/port/owner, different state or details.
+        let a = Endpoint {
+            proto: Proto::Udp,
+            local_addr: "0.0.0.0".into(),
+            port: 5353,
+            state: None,
+            pid: 7,
+            created_at_ms: Some(1),
+            process_name: Some("chrome.exe".into()),
+            path: None,
+        };
+        let b = Endpoint {
+            path: Some("C:/x".into()),
+            ..a.clone()
+        };
+        let other_pid = Endpoint {
+            pid: 8,
+            ..a.clone()
+        };
+        let rows = unique_rows(vec![a.clone(), other_pid, b]);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows.iter().filter(|r| r.pid == 7).count(), 1);
     }
 }

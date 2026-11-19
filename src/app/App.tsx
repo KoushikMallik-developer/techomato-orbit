@@ -3,6 +3,7 @@ import { Provider } from 'react-redux';
 import { queryClient } from './queryClient';
 import { Bootstrap } from './Bootstrap';
 import { store, useAppSelector } from './store';
+import { PortsPage } from '@/features/ports/pages/PortsPage';
 import { LogsPage } from '@/features/logs/pages/LogsPage';
 import { ServicesPage } from '@/features/services/pages/ServicesPage/ServicesPage';
 import { AppShell } from '@/shared/layout/AppShell';
@@ -14,6 +15,7 @@ function Content() {
   return (
     <AppShell>
       {module === 'services' && <ServicesPage />}
+      {module === 'ports' && <PortsPage />}
       {module === 'logs' && <LogsPage />}
       {module === 'settings' && (
         <>
