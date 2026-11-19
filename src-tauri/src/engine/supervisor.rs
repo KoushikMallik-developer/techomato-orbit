@@ -35,6 +35,16 @@ pub struct ServiceRuntime {
     pub last_error: Option<String>,
 }
 
+/// One line of the `log://line` event (sent in batches).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogEvent {
+    pub service_id: String,
+    pub ts_ms: u64,
+    pub stream: Stream,
+    pub text: String,
+}
+
 impl ServiceRuntime {
     fn idle(id: &str) -> Self {
         Self {
@@ -124,6 +134,39 @@ impl Supervisor {
             .iter()
             .map(|s| self.runtime(&s.id))
             .collect())
+    }
+
+    /// Calls `emit` with the lines produced since the last tick, at most every 100 ms.
+    pub fn spawn_log_emitter(&self, emit: impl Fn(Vec<LogEvent>) + Send + 'static) {
+        let inner = self.0.clone();
+        std::thread::spawn(move || {
+            let mut cursors: HashMap<String, u64> = HashMap::new();
+            loop {
+                std::thread::sleep(Duration::from_millis(100));
+                let sinks: Vec<_> = inner
+                    .sinks
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .map(|(id, s)| (id.clone(), s.clone()))
+                    .collect();
+                let mut batch = Vec::new();
+                for (id, sink) in sinks {
+                    let cursor = cursors.entry(id.clone()).or_insert(0);
+                    let (lines, next) = sink.take_since(*cursor);
+                    *cursor = next;
+                    batch.extend(lines.into_iter().map(|l| LogEvent {
+                        service_id: id.clone(),
+                        ts_ms: l.ts_ms,
+                        stream: l.stream,
+                        text: l.text,
+                    }));
+                }
+                if !batch.is_empty() {
+                    emit(batch);
+                }
+            }
+        });
     }
 
     pub fn logs(&self, id: &str) -> Arc<LogSink> {

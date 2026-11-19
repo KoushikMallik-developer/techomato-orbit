@@ -35,6 +35,8 @@ struct Inner {
     writer: Option<BufWriter<File>>,
     size: u64,
     secrets: Vec<String>,
+    /// Lines ever pushed; lets `take_since` hand each line to a consumer once.
+    total: u64,
 }
 
 pub struct LogSink {
@@ -123,6 +125,7 @@ impl LogSink {
                 writer: None,
                 size,
                 secrets: Vec::new(),
+                total: 0,
             }),
         }
     }
@@ -160,6 +163,7 @@ impl LogSink {
             stream,
             text,
         });
+        inner.total += 1;
         while inner.ring.len() > self.ring_lines {
             inner.ring.pop_front();
         }
@@ -202,6 +206,27 @@ impl LogSink {
             let _ = fs::rename(self.current_path(), self.rotated_path(1));
         }
         inner.size = 0;
+    }
+
+    /// Lines pushed since `cursor` (a value from a previous call, 0 at first) and the new cursor.
+    /// Lines already evicted from the ring are skipped.
+    pub fn take_since(&self, cursor: u64) -> (Vec<LogLine>, u64) {
+        let inner = self.inner.lock().unwrap();
+        let new = inner.total.saturating_sub(cursor) as usize;
+        let skip = inner.ring.len().saturating_sub(new);
+        (inner.ring.iter().skip(skip).cloned().collect(), inner.total)
+    }
+
+    /// Forget everything: memory and every log file for this service.
+    pub fn clear(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.writer = None;
+        inner.ring.clear();
+        inner.size = 0;
+        let _ = fs::remove_file(self.current_path());
+        for n in 1..self.max_files {
+            let _ = fs::remove_file(self.rotated_path(n));
+        }
     }
 
     pub fn flush(&self) {
@@ -483,5 +508,46 @@ mod tests {
         s.push(Stream::Stdout, "a\tb\\c\rd");
         let h = s.read_history(0, 10, None);
         assert_eq!(h[0].text, "a\tb\\c\rd");
+    }
+
+    #[test]
+    fn take_since_returns_only_new_lines_and_survives_ring_eviction() {
+        let dir = tempfile::tempdir().unwrap();
+        let sink = LogSink::new(dir.path().to_path_buf(), "svc", 1 << 20, 3, 3);
+        let (none, c0) = sink.take_since(0);
+        assert!(none.is_empty());
+        sink.push(Stream::Stdout, "a");
+        sink.push(Stream::Stderr, "b");
+        let (got, c1) = sink.take_since(c0);
+        assert_eq!(
+            got.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert!(sink.take_since(c1).0.is_empty());
+        for t in ["c", "d", "e", "f", "g"] {
+            sink.push(Stream::Stdout, t);
+        }
+        // Ring holds 3: lines evicted before being taken are skipped, never duplicated.
+        let (got, _) = sink.take_since(c1);
+        assert_eq!(
+            got.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(),
+            ["e", "f", "g"]
+        );
+    }
+
+    #[test]
+    fn clear_empties_memory_and_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let sink = LogSink::new(dir.path().to_path_buf(), "svc", 200, 3, 100);
+        for i in 0..30 {
+            sink.push(Stream::Stdout, &format!("line {i} padding padding"));
+        }
+        sink.clear();
+        assert!(sink.recent(10).is_empty());
+        assert!(sink.read_history(0, 100, None).is_empty());
+        let left = std::fs::read_dir(dir.path()).unwrap().count();
+        assert_eq!(left, 0, "rotated files must be removed too");
+        sink.push(Stream::Stdout, "after");
+        assert_eq!(sink.read_history(0, 10, None).len(), 1);
     }
 }

@@ -38,6 +38,10 @@ pub fn run() {
                             let _ = handle.emit("service://status", rt);
                         }),
                     );
+                    let log_handle = app.handle().clone();
+                    sup.spawn_log_emitter(move |batch| {
+                        let _ = log_handle.emit("log://line", batch);
+                    });
                     sup.adopt_on_startup();
                     app.manage(database);
                     app.manage(secrets);
@@ -66,6 +70,11 @@ pub fn run() {
             commands::services::service_restart,
             commands::services::service_runtime_list,
             commands::services::service_secret_is_set,
+            commands::logs::log_recent,
+            commands::logs::log_history,
+            commands::logs::log_clear,
+            commands::logs::log_export,
+            commands::pick_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Techomato Orbit");

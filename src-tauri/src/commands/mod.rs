@@ -1,5 +1,6 @@
 //! Tauri command handlers, one file per domain.
 
+pub mod logs;
 pub mod services;
 
 use crate::error::{AppError, AppResult, ErrorKind};
@@ -30,4 +31,22 @@ pub fn confirm_action(
     } else {
         Err(AppError::new(ErrorKind::Cancelled, "Cancelled."))
     }
+}
+
+/// Native file or folder picker; `None` if the user cancelled.
+#[tauri::command]
+pub async fn pick_path(app: AppHandle, folder: bool) -> AppResult<Option<String>> {
+    let dialog = app.dialog().file();
+    let picked = if folder {
+        dialog.blocking_pick_folder()
+    } else {
+        dialog.blocking_pick_file()
+    };
+    picked
+        .map(|p| {
+            p.into_path()
+                .map(|p| p.to_string_lossy().into_owned())
+                .map_err(|e| AppError::new(ErrorKind::Io, e.to_string()))
+        })
+        .transpose()
 }

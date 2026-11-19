@@ -11,6 +11,11 @@ export const CMD = {
   serviceRestart: 'service_restart',
   serviceRuntimeList: 'service_runtime_list',
   serviceSecretIsSet: 'service_secret_is_set',
+  logRecent: 'log_recent',
+  logHistory: 'log_history',
+  logClear: 'log_clear',
+  logExport: 'log_export',
+  pickPath: 'pick_path',
 } as const;
 
 export type CmdName = (typeof CMD)[keyof typeof CMD];
