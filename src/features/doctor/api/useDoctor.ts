@@ -10,7 +10,7 @@ import { FixResultSchema, type Fix } from './doctor.schema';
 const report = (m: string) => store.dispatch(pushToast(m));
 const rescan = () => scan(report);
 
-/** Scans the first time the page is opened; later visits show the last result until "Scan again". */
+/** Scans the first time the page is opened; later visits show the last result until Refresh is pressed. */
 export function useDoctor() {
   const s = useSyncExternalStore(subscribe, getState);
   useEffect(() => {

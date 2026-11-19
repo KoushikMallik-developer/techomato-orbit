@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Package as PackageIcon, RefreshCw, Search } from 'lucide-react';
+import { Package as PackageIcon, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/shared/ui/Button';
 import { EmptyState } from '@/shared/ui/EmptyState';
@@ -59,6 +59,7 @@ export function PackagesPage() {
       <PageHeader
         title="Packages"
         summary={summary}
+        refreshing={list.isFetching}
         actions={
           <>
             {view === 'outdated' && (list.data?.length ?? 0) > 0 && manager && (
@@ -76,13 +77,6 @@ export function PackagesPage() {
                 Upgrade all
               </Button>
             )}
-            <Button aria-label="Refresh" disabled={!manager || list.isFetching} onClick={refresh}>
-              <RefreshCw
-                aria-hidden
-                className={`size-4 ${list.isFetching ? 'animate-spin' : ''}`}
-              />
-              Refresh
-            </Button>
           </>
         }
       />

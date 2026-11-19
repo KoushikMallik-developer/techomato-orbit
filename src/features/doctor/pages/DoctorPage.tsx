@@ -3,7 +3,6 @@ import {
   CircleCheck,
   Info,
   OctagonAlert,
-  RefreshCw,
   Stethoscope,
   TriangleAlert,
   type LucideIcon,
@@ -76,23 +75,14 @@ export function DoctorPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="Doctor"
-        summary={summary}
-        actions={
-          <Button disabled={scanning} onClick={scan}>
-            <RefreshCw aria-hidden className={`size-4 ${scanning ? 'animate-spin' : ''}`} />
-            Scan again
-          </Button>
-        }
-      />
+      <PageHeader title="Doctor" summary={summary} onRefresh={scan} refreshing={scanning} />
       <p className="max-w-2xl text-sm text-fg-muted">
         Doctor only looks. Nothing changes unless you press a button and confirm. Tags say what a
         finding is about: <b>Speed</b> affects how fast the PC feels, <b>Storage</b> is disk space
         (clearing it does not make the PC faster), <b>Info</b> is just good to know.
       </p>
       {groups.length === 0 && !scanning && (
-        <EmptyState icon={Stethoscope} title="No results" hint="Press Scan again to check." />
+        <EmptyState icon={Stethoscope} title="No results" hint="Press Refresh to check." />
       )}
       {groups.map((g) => {
         const open = expanded[g.category] || g.items.length <= SHOWN + 1;
