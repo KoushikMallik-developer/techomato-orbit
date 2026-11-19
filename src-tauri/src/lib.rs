@@ -91,6 +91,7 @@ pub fn run() {
             commands::logs::log_export,
             commands::ports::ports_list,
             commands::ports::port_check,
+            commands::ports::port_end_process,
             commands::pick_path,
         ])
         .run(tauri::generate_context!())

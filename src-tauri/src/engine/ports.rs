@@ -1,9 +1,13 @@
 //! Ports page logic: matching listening endpoints to Orbit's services.
 
 use crate::engine::supervisor::ServiceRuntime;
+use crate::error::{AppError, AppResult, ErrorKind};
 use crate::models::service::ServiceSpec;
 use crate::windows::net::Endpoint;
+use crate::windows::procs::{is_alive, ProcId};
 use serde::Serialize;
+use std::os::windows::process::CommandExt;
+use std::time::{Duration, Instant};
 
 /// An endpoint plus which Orbit service (if any) it belongs to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -59,6 +63,97 @@ pub fn annotate(
             }
         })
         .collect()
+}
+
+const CRITICAL: [&str; 6] = [
+    "system",
+    "csrss.exe",
+    "wininit.exe",
+    "winlogon.exe",
+    "services.exe",
+    "lsass.exe",
+];
+
+/// Why Orbit will not end this process, in plain words; `None` if it may be offered.
+pub fn refusal(target: ProcId, own_pid: u32, name: Option<&str>) -> Option<String> {
+    if target.pid == own_pid {
+        return Some("That is Techomato Orbit itself.".into());
+    }
+    if target.pid == 0 || target.pid == 4 {
+        return Some("That is part of Windows and cannot be ended.".into());
+    }
+    let lower = name.map(str::to_ascii_lowercase);
+    if lower.as_deref().is_some_and(|n| CRITICAL.contains(&n)) {
+        return Some(format!(
+            "{} is a core Windows process; ending it would crash or log you out.",
+            name.unwrap_or_default()
+        ));
+    }
+    None
+}
+
+/// `taskkill /PID` (tree + force when `force`); true if Windows accepted the request.
+fn taskkill(pid: u32, force: bool) -> bool {
+    let mut args = vec!["/PID".to_string(), pid.to_string()];
+    if force {
+        args.extend(["/T".into(), "/F".into()]);
+    }
+    std::process::Command::new("taskkill")
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(0x0800_0000)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn changed() -> AppError {
+    AppError::new(
+        ErrorKind::Conflict,
+        "That process has changed or already ended.",
+    )
+}
+
+/// Asks `target` to close (up to 5 s), then kills its tree.
+/// The identity (PID + creation time) is re-checked right before each action so a reused PID
+/// is never touched.
+pub fn end_process(target: ProcId, force: bool) -> AppResult<()> {
+    if !is_alive(&target) {
+        return Err(changed());
+    }
+    if !force && taskkill(target.pid, false) {
+        // Windows delivered a close request (a GUI app); give it time to wrap up.
+        // Console signals are deliberately not used here: a process we did not start may share
+        // a terminal with other programs, and a Ctrl+Break would hit them too.
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(5) {
+            if !is_alive(&target) {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    if !is_alive(&target) {
+        return Ok(());
+    }
+    let killed = taskkill(target.pid, true);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while is_alive(&target) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if is_alive(&target) {
+        return Err(AppError::new(
+            ErrorKind::Os,
+            if killed {
+                "The process is still running.".to_string()
+            } else {
+                "Windows refused to end that process (it may need administrator rights)."
+                    .to_string()
+            },
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -150,5 +245,39 @@ mod tests {
         );
         assert_eq!(rows[0].service_id, None);
         assert_eq!(rows[0].conflicts_with, None);
+    }
+
+    fn id(pid: u32) -> ProcId {
+        ProcId {
+            pid,
+            created_at_ms: 1,
+        }
+    }
+
+    #[test]
+    fn orbit_itself_the_idle_process_and_system_are_refused() {
+        assert!(refusal(id(500), 500, Some("techomato-orbit.exe")).is_some());
+        assert!(refusal(id(0), 500, None).is_some());
+        assert!(refusal(id(4), 500, Some("System")).is_some());
+    }
+
+    #[test]
+    fn critical_windows_processes_are_refused_by_name_ignoring_case() {
+        for n in [
+            "lsass.exe",
+            "LSASS.EXE",
+            "csrss.exe",
+            "wininit.exe",
+            "services.exe",
+        ] {
+            assert!(refusal(id(900), 500, Some(n)).is_some(), "{n}");
+        }
+    }
+
+    #[test]
+    fn an_ordinary_process_and_svchost_are_not_refused() {
+        assert_eq!(refusal(id(900), 500, Some("node.exe")), None);
+        assert_eq!(refusal(id(900), 500, Some("svchost.exe")), None);
+        assert_eq!(refusal(id(900), 500, None), None);
     }
 }
