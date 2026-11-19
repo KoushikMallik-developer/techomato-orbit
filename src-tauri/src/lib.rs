@@ -89,6 +89,8 @@ pub fn run() {
             commands::logs::log_history,
             commands::logs::log_clear,
             commands::logs::log_export,
+            commands::ports::ports_list,
+            commands::ports::port_check,
             commands::pick_path,
         ])
         .run(tauri::generate_context!())

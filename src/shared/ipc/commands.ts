@@ -15,6 +15,8 @@ export const CMD = {
   logHistory: 'log_history',
   logClear: 'log_clear',
   logExport: 'log_export',
+  portsList: 'ports_list',
+  portCheck: 'port_check',
   pickPath: 'pick_path',
 } as const;
 

@@ -1,6 +1,7 @@
 //! Tauri command handlers, one file per domain.
 
 pub mod logs;
+pub mod ports;
 pub mod services;
 
 use crate::error::{AppError, AppResult, ErrorKind};
