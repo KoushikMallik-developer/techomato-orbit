@@ -90,16 +90,13 @@ fn http_get(url: &str, accepted: RangeInclusive<u16>, timeout: Duration) -> Resu
     }
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
-    write!(
-        stream,
-        "GET {path} HTTP/1.1
-Host: {authority}
-Connection: close
-User-Agent: Techomato-Orbit
-
-"
-    )
-    .map_err(|e| format!("Request failed: {e}"))?;
+    // One write, so a server that answers after the first bytes never sees a reset mid-request.
+    let request = format!(
+        "GET {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nUser-Agent: Techomato-Orbit\r\n\r\n"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|e| format!("Request failed: {e}"))?;
     let mut head = [0u8; 64];
     let mut got = 0;
     while got < 12 {
@@ -256,6 +253,44 @@ mod tests {
             timeout_secs: 5,
         };
         assert!(matches!(run_once(&missing), HealthResult::Unhealthy(_)));
+    }
+
+    /// Answers 200 only to a well-formed request: CRLF line endings, terminated by a blank line,
+    /// with a Host header. Anything else gets 400. Replies after reading the first chunk, like a
+    /// server that does not wait for the rest.
+    fn strict_server() -> u16 {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming() {
+                let Ok(mut s) = s else { break };
+                let _ = s.set_read_timeout(Some(Duration::from_millis(800)));
+                let mut req = Vec::new();
+                let mut buf = [0u8; 1024];
+                while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match s.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => req.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let text = String::from_utf8_lossy(&req);
+                let ok = text.starts_with("GET /health HTTP/1.1\r\n")
+                    && text.contains("\r\nHost: 127.0.0.1:")
+                    && text.ends_with("\r\n\r\n");
+                let code = if ok { 200 } else { 400 };
+                let _ = write!(
+                    s,
+                    "HTTP/1.1 {code} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn the_http_request_is_well_formed_and_sent_in_one_piece() {
+        let p = strict_server();
+        assert_eq!(run_once(&http(p, 200, 399, 2)), HealthResult::Healthy);
     }
 
     #[test]
