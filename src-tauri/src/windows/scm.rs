@@ -3,13 +3,16 @@
 
 use crate::error::{AppError, AppResult, ErrorKind};
 use serde::Serialize;
+use std::time::{Duration, Instant};
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::ERROR_MORE_DATA;
 use windows::Win32::System::Services::{
-    CloseServiceHandle, EnumServicesStatusExW, OpenSCManagerW, OpenServiceW, QueryServiceConfig2W,
-    QueryServiceConfigW, ENUM_SERVICE_STATUS_PROCESSW, QUERY_SERVICE_CONFIGW, SC_ENUM_PROCESS_INFO,
-    SC_HANDLE, SC_MANAGER_ENUMERATE_SERVICE, SERVICE_CONFIG_DELAYED_AUTO_START_INFO,
-    SERVICE_QUERY_CONFIG, SERVICE_STATE_ALL, SERVICE_WIN32,
+    CloseServiceHandle, ControlService, EnumServicesStatusExW, OpenSCManagerW, OpenServiceW,
+    QueryServiceConfig2W, QueryServiceConfigW, QueryServiceStatus, StartServiceW,
+    ENUM_SERVICE_STATUS_PROCESSW, QUERY_SERVICE_CONFIGW, SC_ENUM_PROCESS_INFO, SC_HANDLE,
+    SC_MANAGER_ENUMERATE_SERVICE, SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONTROL_STOP,
+    SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS, SERVICE_START, SERVICE_STATE_ALL, SERVICE_STATUS,
+    SERVICE_STOP, SERVICE_WIN32,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -336,6 +339,75 @@ pub fn list() -> AppResult<Vec<WinService>> {
         out.sort_by_key(|s| s.display_name.to_lowercase());
         Ok(out)
     }
+}
+
+/// The service named `name` (case-insensitive), if it exists.
+pub fn find(name: &str) -> AppResult<Option<WinService>> {
+    Ok(list()?
+        .into_iter()
+        .find(|s| s.name.eq_ignore_ascii_case(name)))
+}
+
+fn open_service(name: &str, access: u32) -> AppResult<(Handle, Handle)> {
+    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: `wide` is NUL-terminated and outlives the call; handles are closed by `Handle`.
+    unsafe {
+        let scm = Handle(
+            OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), 0x0001)
+                .map_err(|e| os_error("open the service manager", e))?,
+        );
+        let svc = Handle(
+            OpenServiceW(scm.0, PCWSTR(wide.as_ptr()), access)
+                .map_err(|e| os_error(&format!("open service {name}"), e))?,
+        );
+        Ok((scm, svc))
+    }
+}
+
+fn current_state(svc: &Handle) -> AppResult<u32> {
+    let mut st = SERVICE_STATUS::default();
+    // SAFETY: `st` is a valid out-pointer for the call.
+    unsafe { QueryServiceStatus(svc.0, &mut st) }
+        .map_err(|e| os_error("read service status", e))?;
+    Ok(st.dwCurrentState.0)
+}
+
+fn wait_for(svc: &Handle, target: u32, what: &str) -> AppResult<()> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while current_state(svc)? != target {
+        if Instant::now() > deadline {
+            return Err(AppError::new(
+                ErrorKind::Os,
+                format!("The service did not {what} within 30 seconds."),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    Ok(())
+}
+
+/// Starts a service and waits until it is running. Opens it with `SERVICE_START` only.
+pub fn start(name: &str) -> AppResult<()> {
+    let (_scm, svc) = open_service(name, SERVICE_START | SERVICE_QUERY_STATUS)?;
+    if current_state(&svc)? == 4 {
+        return Ok(());
+    }
+    // SAFETY: valid service handle; no arguments are passed.
+    unsafe { StartServiceW(svc.0, None) }.map_err(|e| os_error("start the service", e))?;
+    wait_for(&svc, 4, "start")
+}
+
+/// Asks a service to stop and waits until it has. Opens it with `SERVICE_STOP` only.
+pub fn stop(name: &str) -> AppResult<()> {
+    let (_scm, svc) = open_service(name, SERVICE_STOP | SERVICE_QUERY_STATUS)?;
+    if current_state(&svc)? == 1 {
+        return Ok(());
+    }
+    let mut st = SERVICE_STATUS::default();
+    // SAFETY: valid service handle and out-pointer.
+    unsafe { ControlService(svc.0, SERVICE_CONTROL_STOP, &mut st) }
+        .map_err(|e| os_error("stop the service", e))?;
+    wait_for(&svc, 1, "stop")
 }
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod elevated;
 pub mod engine;
 pub mod error;
 pub mod models;

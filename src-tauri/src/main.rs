@@ -8,5 +8,14 @@ fn main() {
         let pid = args.get(2).and_then(|p| p.parse().ok()).unwrap_or(0);
         std::process::exit(orbit_lib::windows::console::stop_helper(pid));
     }
+    // Third mode: perform one typed operation with administrator rights, then exit.
+    if args.get(1).map(String::as_str) == Some("--elevated-op") {
+        let request = args.get(2).map(String::as_str).unwrap_or_default();
+        let result = args
+            .get(4)
+            .map(std::path::PathBuf::from)
+            .unwrap_or_default();
+        std::process::exit(orbit_lib::elevated::run_helper(request, &result));
+    }
     orbit_lib::run()
 }
