@@ -2,11 +2,12 @@
 //! recovery, and keep-running-on-quit. One watcher thread per running process.
 
 use crate::db::Db;
+use crate::engine::health::{next_health_status, run_once, HealthResult};
 use crate::engine::logs::{pump, LogSink, Stream};
 use crate::engine::preflight::{self, PreflightIssue};
 use crate::engine::state::{next, Event, Status};
 use crate::error::{AppError, AppResult, ErrorKind};
-use crate::models::service::{RestartPolicy, ServiceSpec};
+use crate::models::service::{HealthCheck, RestartPolicy, ServiceSpec};
 use crate::repo::{processes, services as repo};
 use crate::secrets::SecretStore;
 use crate::windows::console::send_graceful_with;
@@ -16,6 +17,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, ChildStderr, ChildStdout};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -495,7 +497,16 @@ impl Inner {
         let grace = Duration::from_millis(500)
             .min(Duration::from_secs(u64::from(spec.startup_timeout_secs)));
         let started = Instant::now();
-        let mut ready = false;
+        // With a health check, readiness comes from the probe thread, not from surviving a grace.
+        let mut ready = spec.health.is_some();
+        let done = Arc::new(AtomicBool::new(false));
+        if let Some(check) = spec.health.clone() {
+            let me = self.clone();
+            let id = id.to_string();
+            let done = done.clone();
+            let startup = Duration::from_secs(u64::from(spec.startup_timeout_secs));
+            std::thread::spawn(move || me.health_loop(&id, &check, startup, &done));
+        }
         let exit = loop {
             match child.try_wait() {
                 Ok(Some(status)) => break status.code(),
@@ -518,6 +529,8 @@ impl Inner {
             std::thread::sleep(Duration::from_millis(50));
         };
 
+        done.store(true, Ordering::SeqCst);
+
         // Give the pipes a moment to drain, but never wait on a grandchild that still holds them.
         let drain = Instant::now();
         while drain.elapsed() < Duration::from_millis(500) && pumps.iter().any(|p| !p.is_finished())
@@ -539,7 +552,7 @@ impl Inner {
             } else {
                 Status::Failed
             });
-            if st.rt.status == Status::Failed {
+            if st.rt.status == Status::Failed && st.rt.last_error.is_none() {
                 st.rt.last_error = Some(match exit {
                     Some(c) => format!("The process exited with code {c}."),
                     None => "The process ended unexpectedly.".to_string(),
@@ -562,6 +575,77 @@ impl Inner {
 
         if !stop_requested {
             self.maybe_restart(id, &spec.restart, clean);
+        }
+    }
+
+    /// Probes until the service is ready (or the startup timeout ends it), then applies the
+    /// 3-strikes rule every interval until the process is gone (`done`).
+    fn health_loop(&self, id: &str, check: &HealthCheck, startup: Duration, done: &AtomicBool) {
+        let slot = self.slot(id);
+        let interval = Duration::from_secs(u64::from(match check {
+            HealthCheck::Tcp { interval_secs, .. }
+            | HealthCheck::Http { interval_secs, .. }
+            | HealthCheck::Command { interval_secs, .. } => (*interval_secs).max(1),
+        }));
+        let sleep = |d: Duration| {
+            let t = Instant::now();
+            while t.elapsed() < d && !done.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        };
+        let publish = |change: &dyn Fn(&mut SlotState) -> bool| {
+            let rt = {
+                let mut st = slot.state.lock().unwrap();
+                change(&mut st).then(|| st.rt.clone())
+            };
+            if let Some(rt) = rt {
+                (self.emit)(&rt);
+            }
+        };
+
+        let began = Instant::now();
+        let mut failures = 0u32;
+        let mut ready = false;
+        while !done.load(Ordering::SeqCst) {
+            let healthy = run_once(check) == HealthResult::Healthy;
+            if done.load(Ordering::SeqCst) {
+                return;
+            }
+            if !ready {
+                if healthy {
+                    ready = true;
+                    publish(&|st| {
+                        next(st.rt.status, Event::Ready)
+                            .map(|to| st.rt.status = to)
+                            .is_ok()
+                    });
+                } else if began.elapsed() >= startup {
+                    let msg = format!(
+                        "The health check did not pass within {}s, so the service was stopped.",
+                        startup.as_secs()
+                    );
+                    let target = {
+                        let mut st = slot.state.lock().unwrap();
+                        st.rt.last_error = Some(msg.clone());
+                        st.proc.as_ref().map(|p| (p.id, p.job.clone()))
+                    };
+                    self.note(id, "failed", &msg);
+                    if let Some((pid, job)) = target {
+                        self.terminate(&pid, job.as_deref());
+                    }
+                    return;
+                }
+                sleep(Duration::from_secs(1).min(interval));
+                continue;
+            }
+            failures = if healthy { 0 } else { failures + 1 };
+            publish(&|st| {
+                let to = next_health_status(failures, st.rt.status);
+                let changed = to != st.rt.status;
+                st.rt.status = to;
+                changed
+            });
+            sleep(interval);
         }
     }
 

@@ -386,7 +386,14 @@ fn status_events_are_emitted_in_order() {
     let h = harness();
     let s = svc(&h, "quick", &["exit", "0"], None);
     h.sup.start(&s.id).unwrap();
-    wait_status(&h, &s.id, Status::Stopped, 3);
+    // The state flips just before its event is emitted, so wait for the event itself.
+    wait_until("the Stopped event", Duration::from_secs(3), || {
+        h.events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.id == s.id && r.status == Status::Stopped)
+    });
     let seen: Vec<Status> = h
         .events
         .lock()
@@ -397,4 +404,84 @@ fn status_events_are_emitted_in_order() {
         .collect();
     assert_eq!(seen.first(), Some(&Status::Starting));
     assert_eq!(seen.last(), Some(&Status::Stopped));
+}
+
+fn with_health(h: &Harness, mut spec: ServiceSpec, health: HealthCheck) -> ServiceSpec {
+    spec.health = Some(health);
+    repo::update(&h.db, h.secrets.as_ref(), &spec).unwrap()
+}
+
+#[test]
+#[ignore]
+fn a_service_with_a_health_check_runs_only_after_it_passes() {
+    let h = harness();
+    let port = free_port();
+    let s = svc(&h, "api", &["serve", &port.to_string()], Some(port));
+    let s = with_health(
+        &h,
+        s,
+        HealthCheck::Tcp {
+            port,
+            interval_secs: 1,
+            timeout_secs: 1,
+        },
+    );
+    h.sup.start(&s.id).unwrap();
+    wait_status(&h, &s.id, Status::Running, 8);
+    assert!(http_ok(port), "Running must mean the port answers");
+    h.sup.stop(&s.id, false).unwrap();
+}
+
+#[test]
+#[ignore]
+fn a_health_check_that_never_passes_fails_the_start_and_ends_the_process() {
+    let h = harness();
+    let port = free_port();
+    let dead = free_port();
+    let mut s = svc(&h, "api", &["serve", &port.to_string()], Some(port));
+    s.startup_timeout_secs = 2;
+    let s = with_health(
+        &h,
+        s,
+        HealthCheck::Tcp {
+            port: dead,
+            interval_secs: 1,
+            timeout_secs: 1,
+        },
+    );
+    h.sup.start(&s.id).unwrap();
+    let id = proc_id(&wait_status(&h, &s.id, Status::Starting, 3));
+    let r = wait_status(&h, &s.id, Status::Failed, 8);
+    assert!(r.last_error.is_some());
+    assert!(
+        !is_alive(&id),
+        "the unhealthy process must not be left running"
+    );
+}
+
+#[test]
+#[ignore]
+fn three_failed_probes_make_a_running_service_unresponsive_and_a_pass_restores_it() {
+    let h = harness();
+    let port = free_port();
+    let flag = format!("health-flag-{port}.tmp");
+    let _ = std::fs::remove_file(&flag);
+    let s = svc(&h, "api", &["serve", &port.to_string()], Some(port));
+    let s = with_health(
+        &h,
+        s,
+        HealthCheck::Command {
+            exe: "cmd".into(),
+            args: vec!["/c".into(), format!("if exist {flag} exit 1")],
+            interval_secs: 1,
+            timeout_secs: 3,
+        },
+    );
+    h.sup.start(&s.id).unwrap();
+    wait_status(&h, &s.id, Status::Running, 8);
+    std::fs::write(&flag, "x").unwrap();
+    wait_status(&h, &s.id, Status::Unresponsive, 10);
+    std::fs::remove_file(&flag).unwrap();
+    wait_status(&h, &s.id, Status::Running, 10);
+    h.sup.stop(&s.id, false).unwrap();
 }
