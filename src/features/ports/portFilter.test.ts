@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PortRow } from './api/ports.schema';
-import { filterPorts, isProtected } from './portFilter';
+import { canEnd, filterPorts, isProtected } from './portFilter';
 
 const row = (o: Partial<PortRow>): PortRow => ({
   proto: 'tcp',
@@ -65,5 +65,17 @@ describe('isProtected', () => {
     expect(isProtected(row({ pid: 4 }))).toBe(true);
     expect(isProtected(row({ pid: 0 }))).toBe(true);
     expect(isProtected(row({ pid: 100 }))).toBe(false);
+  });
+});
+
+describe('canEnd', () => {
+  it('offers End for an ordinary foreign process', () => {
+    expect(canEnd(row({}))).toBe(true);
+  });
+  it('does not offer End for protected processes', () => {
+    expect(canEnd(row({ pid: 4 }))).toBe(false);
+  });
+  it('leaves Orbit services to the Services page, where the supervisor stops them cleanly', () => {
+    expect(canEnd(row({ serviceId: 'svc-1', serviceName: 'API' }))).toBe(false);
   });
 });

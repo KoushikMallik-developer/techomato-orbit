@@ -23,15 +23,15 @@ pub enum Action {
 }
 
 pub const DEFAULTS: [(Action, &str, &str); 3] = [
-    (Action::Open, "Ctrl+Alt+O", "Open Orbit"),
+    (Action::Open, "Super+Alt+O", "Open Orbit"),
     (
         Action::StartProject,
-        "Ctrl+Alt+S",
+        "Super+Alt+S",
         "Start the last-used project",
     ),
     (
         Action::StopProject,
-        "Ctrl+Alt+X",
+        "Super+Alt+X",
         "Stop the last-used project",
     ),
 ];
@@ -131,11 +131,26 @@ mod tests {
     }
 
     #[test]
+    fn no_default_uses_ctrl_plus_alt_because_that_is_altgr() {
+        for (_, acc, _) in DEFAULTS {
+            let lower = acc.to_lowercase();
+            let ctrl = lower.contains("ctrl") || lower.contains("control");
+            assert!(
+                !(ctrl && lower.contains("alt")),
+                "{acc} would swallow AltGr characters"
+            );
+        }
+    }
+
+    #[test]
     fn each_shortcut_maps_to_its_own_action() {
         for (action, acc, _) in DEFAULTS {
             let s = Shortcut::from_str(acc).unwrap();
             assert_eq!(action_for(&s), Some(action), "{acc}");
         }
-        assert_eq!(action_for(&Shortcut::from_str("Ctrl+Alt+Q").unwrap()), None);
+        assert_eq!(
+            action_for(&Shortcut::from_str("Super+Alt+Q").unwrap()),
+            None
+        );
     }
 }

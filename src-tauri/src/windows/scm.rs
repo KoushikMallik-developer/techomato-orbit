@@ -159,8 +159,9 @@ pub fn is_protected(
     if CORE_SERVICES.iter().any(|c| c.eq_ignore_ascii_case(name)) {
         return true;
     }
+    // No readable image path (Windows refused the query): never offer controls.
     let Some(path) = binary_path else {
-        return false;
+        return true;
     };
     let image = normalise(&image_of(path), system_root);
     let root = system_root
@@ -485,7 +486,8 @@ mod tests {
             r#""C:\Program Files\Docker\Docker\resources\com.docker.service""#,
             "com.docker.service"
         ));
-        assert!(!is_protected(OWN, None, "mystery", ROOT));
+        // A service whose configuration cannot be read is never offered controls.
+        assert!(is_protected(OWN, None, "mystery", ROOT));
     }
 
     #[test]

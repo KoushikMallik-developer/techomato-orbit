@@ -24,3 +24,8 @@ export function filterPorts(
 export function isProtected(row: PortRow): boolean {
   return row.pid === 0 || row.pid === 4;
 }
+
+/** End is offered only for foreign processes; Orbit's own services are stopped from Services. */
+export function canEnd(row: PortRow): boolean {
+  return !isProtected(row) && row.serviceId === null;
+}

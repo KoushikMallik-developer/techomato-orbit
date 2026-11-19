@@ -98,13 +98,20 @@ pub fn decode(text: &str) -> Result<ElevatedOp, String> {
     Ok(op)
 }
 
-fn process_name(pid: u32) -> Option<String> {
+fn process_info(pid: u32) -> (Option<String>, Option<std::path::PathBuf>) {
     use sysinfo::{Pid, ProcessesToUpdate, System};
-    let mut sys = System::new().ok()?;
+    let Ok(mut sys) = System::new() else {
+        return (None, None);
+    };
     let pid = Pid::from_u32(pid);
     sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
-    sys.process(pid)
-        .map(|p| p.name().to_string_lossy().into_owned())
+    match sys.process(pid) {
+        Some(p) => (
+            Some(p.name().to_string_lossy().into_owned()),
+            p.exe().map(std::path::Path::to_path_buf),
+        ),
+        None => (None, None),
+    }
 }
 
 /// Semantic checks, made in the elevated process just before acting: the service exists and is
@@ -129,10 +136,20 @@ pub fn validate(op: &ElevatedOp) -> Result<(), String> {
                 pid: *pid,
                 created_at_ms: *created_at_ms,
             };
-            let name = process_name(*pid);
+            let (name, image) = process_info(*pid);
             if let Some(why) =
                 crate::engine::ports::refusal(target, std::process::id(), name.as_deref())
             {
+                return Err(why);
+            }
+            let hosts: Vec<u32> = crate::windows::scm::list()
+                .map_err(|e| e.message)?
+                .into_iter()
+                .filter(|s| s.protected)
+                .filter_map(|s| s.pid)
+                .collect();
+            let own = std::env::current_exe().unwrap_or_default();
+            if let Some(why) = end_refusal(*pid, image.as_deref(), &own, &hosts) {
                 return Err(why);
             }
             if identify(*pid) != Some(target) {
@@ -170,6 +187,79 @@ pub fn execute(op: &ElevatedOp) -> OpResult {
     }
 }
 
+/// Validates the helper's whole command line (`<exe> --elevated-op <request> --result <file>`):
+/// exact layout, and a result file that is `orbit-elevated-<uuid>.json` directly in the user's
+/// temp folder. Anything else is refused, so the elevated copy can never be pointed at some other
+/// file.
+pub fn parse_helper_args(
+    args: &[String],
+    temp_dir: &std::path::Path,
+) -> Result<(String, std::path::PathBuf), String> {
+    let [_, flag, request, result_flag, path] = args else {
+        return Err("The helper was started with the wrong arguments.".into());
+    };
+    if flag != "--elevated-op" || result_flag != "--result" {
+        return Err("The helper was started with the wrong arguments.".into());
+    }
+    let path = std::path::PathBuf::from(path);
+    let same_dir = path.parent().is_some_and(|p| {
+        p.to_string_lossy().trim_end_matches('\\').to_lowercase()
+            == temp_dir
+                .to_string_lossy()
+                .trim_end_matches('\\')
+                .to_lowercase()
+    });
+    let name_ok = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_prefix("orbit-elevated-"))
+        .and_then(|n| n.strip_suffix(".json"))
+        .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok());
+    if !(same_dir && name_ok) {
+        return Err("The helper's result file is not an Orbit temp file.".into());
+    }
+    Ok((request.clone(), path))
+}
+
+/// Writes the result into a file the caller created: never creates it, never follows a link,
+/// only touches a plain file.
+fn write_result(path: &std::path::Path, result: &OpResult) {
+    use std::io::Write;
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    // `symlink_metadata` does not follow links, so a link reports as neither file nor directory.
+    if !std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file()) {
+        return;
+    }
+    let Ok(mut file) = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+    else {
+        return;
+    };
+    let _ = file.write_all(&serde_json::to_vec(result).unwrap_or_default());
+}
+
+/// Extra refusals for ending a process, applied inside the elevated helper: Orbit's own image
+/// and any process hosting a protected Windows service.
+pub fn end_refusal(
+    pid: u32,
+    image: Option<&std::path::Path>,
+    own_image: &std::path::Path,
+    protected_pids: &[u32],
+) -> Option<String> {
+    let lower = |p: &std::path::Path| p.to_string_lossy().to_lowercase();
+    if image.is_some_and(|i| lower(i) == lower(own_image)) {
+        return Some("That is Techomato Orbit itself.".into());
+    }
+    if protected_pids.contains(&pid) {
+        return Some("That process runs part of Windows and cannot be ended.".into());
+    }
+    None
+}
+
 /// Body of `--elevated-op <request> --result <file>`: decode, validate, execute, report. Any
 /// failure before execution is written as a refusal and nothing is done. Returns the exit code.
 /// The result file is only written if the caller already created it.
@@ -178,10 +268,7 @@ pub fn run_helper(request: &str, result_path: &std::path::Path) -> i32 {
         Ok(op) => execute(&op),
         Err(why) => OpResult::refused(why),
     };
-    if result_path.exists() {
-        let json = serde_json::to_vec(&result).unwrap_or_default();
-        let _ = std::fs::write(result_path, json);
-    }
+    write_result(result_path, &result);
     i32::from(!result.ok)
 }
 
@@ -413,6 +500,84 @@ mod tests {
         assert_eq!(code, 1);
         let result: OpResult = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
         assert!(result.message.contains("part of Windows"));
+    }
+
+    fn args(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    const UUID: &str = "0b0e6f0a-5a52-4f3a-9d1e-6a1c2b3d4e5f";
+
+    #[test]
+    fn helper_args_must_have_the_exact_layout_and_a_result_file_in_temp() {
+        let tmp = std::path::Path::new(r"C:\Users\u\AppData\Local\Temp");
+        let good = tmp.join(format!("orbit-elevated-{UUID}.json"));
+        let g = good.to_str().unwrap();
+        let ok = args(&["orbit.exe", "--elevated-op", "abc", "--result", g]);
+        assert_eq!(
+            parse_helper_args(&ok, tmp).unwrap(),
+            ("abc".to_string(), good.clone())
+        );
+        let sub = format!(r"C:\Users\u\AppData\Local\Temp\sub\orbit-elevated-{UUID}.json");
+        let dots = format!(r"C:\Users\u\AppData\Local\Temp\..\orbit-elevated-{UUID}.json");
+        let bad_name = r"C:\Users\u\AppData\Local\Temp\orbit-elevated-notauuid.json";
+        let hosts = r"C:\Windows\System32\drivers\etc\hosts";
+        for bad in [
+            args(&["orbit.exe", "--elevated-op", "abc", "--result", hosts]),
+            args(&["orbit.exe", "--elevated-op", "abc", "--out", g]),
+            args(&["orbit.exe", "--elevated-op", "abc"]),
+            args(&["orbit.exe", "--elevated-op", "abc", "--result", g, "x"]),
+            args(&["orbit.exe", "--elevated-op", "abc", "--result", &sub]),
+            args(&["orbit.exe", "--elevated-op", "abc", "--result", bad_name]),
+            args(&["orbit.exe", "--elevated-op", "abc", "--result", &dots]),
+        ] {
+            assert!(parse_helper_args(&bad, tmp).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_result_is_written_only_into_an_existing_plain_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let ok = OpResult::ok("done");
+        let file = dir.path().join("r.json");
+        std::fs::write(&file, b"").unwrap();
+        write_result(&file, &ok);
+        assert!(std::fs::read_to_string(&file).unwrap().contains("done"));
+        // A directory is not a plain file; nothing is written or created.
+        write_result(dir.path(), &ok);
+        let missing = dir.path().join("missing.json");
+        write_result(&missing, &ok);
+        assert!(!missing.exists());
+    }
+
+    #[test]
+    fn a_result_is_not_written_through_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("precious.txt");
+        std::fs::write(&target, b"keep").unwrap();
+        let link = dir.path().join("link.json");
+        if std::os::windows::fs::symlink_file(&target, &link).is_err() {
+            eprintln!("skipped: creating symlinks needs Developer Mode");
+            return;
+        }
+        write_result(&link, &OpResult::ok("x"));
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "keep");
+    }
+
+    #[test]
+    fn ending_orbit_or_a_protected_services_host_is_refused() {
+        use std::path::Path;
+        let own = Path::new(r"C:\Orbit\orbit.exe");
+        let image = Some(Path::new(r"c:\orbit\ORBIT.EXE"));
+        assert!(end_refusal(10, image, own, &[]).unwrap().contains("Orbit"));
+        let other = Some(Path::new(r"C:\tools\node.exe"));
+        assert!(end_refusal(10, other, own, &[]).is_none());
+        let svchost = Some(Path::new(r"C:\Windows\System32\svchost.exe"));
+        assert!(end_refusal(20, svchost, own, &[5, 20])
+            .unwrap()
+            .contains("Windows"));
+        assert!(end_refusal(20, svchost, own, &[5]).is_none());
+        assert!(end_refusal(30, None, own, &[]).is_none());
     }
 
     #[test]

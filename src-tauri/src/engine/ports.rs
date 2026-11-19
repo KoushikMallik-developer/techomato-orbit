@@ -65,8 +65,13 @@ pub fn annotate(
         .collect()
 }
 
-const CRITICAL: [&str; 6] = [
+const CRITICAL: &[&str] = &[
     "system",
+    "registry",
+    "memcompression",
+    "smss.exe",
+    "lsaiso.exe",
+    "fontdrvhost.exe",
     "csrss.exe",
     "wininit.exe",
     "winlogon.exe",
@@ -93,12 +98,21 @@ pub fn refusal(target: ProcId, own_pid: u32, name: Option<&str>) -> Option<Strin
 }
 
 /// `taskkill /PID` (tree + force when `force`); true if Windows accepted the request.
+/// Absolute path, so a `taskkill.exe` planted next to Orbit or on `PATH` is never run (this also
+/// runs inside the elevated helper).
+fn taskkill_exe() -> std::path::PathBuf {
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+    std::path::PathBuf::from(root)
+        .join("System32")
+        .join("taskkill.exe")
+}
+
 fn taskkill(pid: u32, force: bool) -> bool {
     let mut args = vec!["/PID".to_string(), pid.to_string()];
     if force {
         args.extend(["/T".into(), "/F".into()]);
     }
-    std::process::Command::new("taskkill")
+    std::process::Command::new(taskkill_exe())
         .args(args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -259,6 +273,30 @@ mod tests {
         assert!(refusal(id(500), 500, Some("techomato-orbit.exe")).is_some());
         assert!(refusal(id(0), 500, None).is_some());
         assert!(refusal(id(4), 500, Some("System")).is_some());
+    }
+
+    #[test]
+    fn more_core_processes_are_refused() {
+        for name in [
+            "smss.exe",
+            "Registry",
+            "MemCompression",
+            "LsaIso.exe",
+            "fontdrvhost.exe",
+        ] {
+            let target = ProcId {
+                pid: 1234,
+                created_at_ms: 1,
+            };
+            assert!(refusal(target, 1, Some(name)).is_some(), "{name}");
+        }
+    }
+
+    #[test]
+    fn taskkill_is_run_from_the_system_directory_not_the_path() {
+        let exe = taskkill_exe();
+        assert!(exe.is_absolute() && exe.exists(), "{exe:?}");
+        assert!(exe.to_string_lossy().to_lowercase().contains("system32"));
     }
 
     #[test]

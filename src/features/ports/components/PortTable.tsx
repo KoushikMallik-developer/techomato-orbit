@@ -1,6 +1,6 @@
 import { Button } from '@/shared/ui/Button';
 import type { PortRow } from '../api/ports.schema';
-import { isProtected } from '../portFilter';
+import { canEnd } from '../portFilter';
 
 type Props = {
   rows: PortRow[];
@@ -54,7 +54,7 @@ export function PortTable({ rows, watch, busy, onEnd, onToggleWatch }: Props) {
                 <Button size="sm" onClick={() => onToggleWatch(r.port)}>
                   {watch.includes(r.port) ? 'Unwatch' : 'Watch'}
                 </Button>{' '}
-                {!isProtected(r) && (
+                {canEnd(r) && (
                   <Button
                     size="sm"
                     variant="danger"

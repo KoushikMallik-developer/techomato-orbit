@@ -10,12 +10,11 @@ fn main() {
     }
     // Third mode: perform one typed operation with administrator rights, then exit.
     if args.get(1).map(String::as_str) == Some("--elevated-op") {
-        let request = args.get(2).map(String::as_str).unwrap_or_default();
-        let result = args
-            .get(4)
-            .map(std::path::PathBuf::from)
-            .unwrap_or_default();
-        std::process::exit(orbit_lib::elevated::run_helper(request, &result));
+        let code = match orbit_lib::elevated::parse_helper_args(&args, &std::env::temp_dir()) {
+            Ok((request, result)) => orbit_lib::elevated::run_helper(&request, &result),
+            Err(_) => 1, // wrong layout or an unexpected result path: act on nothing, write nothing
+        };
+        std::process::exit(code);
     }
     orbit_lib::run()
 }
