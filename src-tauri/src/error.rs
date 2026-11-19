@@ -45,6 +45,12 @@ impl From<std::io::Error> for AppError {
     }
 }
 
+impl From<serde_json::Error> for AppError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::new(ErrorKind::Internal, e.to_string())
+    }
+}
+
 impl From<rusqlite::Error> for AppError {
     fn from(e: rusqlite::Error) -> Self {
         Self::new(ErrorKind::Db, e.to_string())

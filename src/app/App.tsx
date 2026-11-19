@@ -1,4 +1,6 @@
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from 'react-redux';
+import { queryClient } from './queryClient';
 import { Bootstrap } from './Bootstrap';
 import { store, useAppSelector } from './store';
 import { AppShell } from '@/shared/layout/AppShell';
@@ -17,9 +19,11 @@ function Content() {
 export function App() {
   return (
     <Provider store={store}>
-      <Bootstrap>
-        <Content />
-      </Bootstrap>
+      <QueryClientProvider client={queryClient}>
+        <Bootstrap>
+          <Content />
+        </Bootstrap>
+      </QueryClientProvider>
     </Provider>
   );
 }

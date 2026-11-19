@@ -1,7 +1,12 @@
 pub mod commands;
 pub mod db;
 pub mod error;
+pub mod models;
+pub mod repo;
+pub mod secrets;
 
+use secrets::{InMemorySecretStore, SecretStore};
+use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
@@ -19,6 +24,8 @@ pub fn run() {
             match db::open(&dir.join("orbit.db")) {
                 Ok(database) => {
                     app.manage(database);
+                    // Replaced by the Windows Credential Manager store in the secrets task.
+                    app.manage::<Arc<dyn SecretStore>>(Arc::new(InMemorySecretStore::default()));
                     Ok(())
                 }
                 Err(e) => {
@@ -31,6 +38,13 @@ pub fn run() {
                 }
             }
         })
+        .invoke_handler(tauri::generate_handler![
+            commands::services::service_list,
+            commands::services::service_get,
+            commands::services::service_create,
+            commands::services::service_update,
+            commands::services::service_delete,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Techomato Orbit");
 }
