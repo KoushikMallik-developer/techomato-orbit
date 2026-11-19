@@ -301,7 +301,10 @@ mod tests {
     #[test]
     #[ignore = "needs winget"]
     fn real_winget_lists_installed_packages() {
-        let l = run::locate(Manager::Winget).unwrap();
+        let Some(l) = run::locate(Manager::Winget) else {
+            eprintln!("winget is not installed here; skipping");
+            return;
+        };
         let args = pm::args::build(Manager::Winget, &Op::Installed).unwrap();
         let out = run::run(&l, &args, READ_TIMEOUT, |_| {}).unwrap();
         let rows = pm::interpret(Manager::Winget, &Op::Installed, &out).unwrap();
@@ -312,7 +315,10 @@ mod tests {
     #[test]
     #[ignore = "needs Chocolatey"]
     fn real_choco_lists_installed_packages() {
-        let l = run::locate(Manager::Choco).unwrap();
+        let Some(l) = run::locate(Manager::Choco) else {
+            eprintln!("Chocolatey is not installed here; skipping");
+            return;
+        };
         let args = pm::args::build(Manager::Choco, &Op::Installed).unwrap();
         let out = run::run(&l, &args, READ_TIMEOUT, |_| {}).unwrap();
         assert!(!pm::interpret(Manager::Choco, &Op::Installed, &out)
