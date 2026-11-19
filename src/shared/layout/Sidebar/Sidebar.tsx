@@ -2,6 +2,7 @@ import {
   FolderKanban,
   Moon,
   Network,
+  Package,
   ScrollText,
   Search,
   ServerCog,
@@ -14,11 +15,17 @@ import { useAppDispatch, useAppSelector } from '@/app/store';
 import { usePrefs } from '@/features/settings/api/usePrefs';
 import { useRuntime } from '@/features/services/api/useRuntime';
 
-type Item = { key: ModuleKey; label: string; icon: LucideIcon; pref?: 'projects' | 'ports' };
+type Item = {
+  key: ModuleKey;
+  label: string;
+  icon: LucideIcon;
+  pref?: 'projects' | 'ports' | 'packages';
+};
 const RUN: Item[] = [
   { key: 'services', label: 'Services', icon: ServerCog },
   { key: 'projects', label: 'Projects', icon: FolderKanban, pref: 'projects' },
   { key: 'ports', label: 'Ports', icon: Network, pref: 'ports' },
+  { key: 'packages', label: 'Packages', icon: Package, pref: 'packages' },
   { key: 'logs', label: 'Logs', icon: ScrollText },
 ];
 

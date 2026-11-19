@@ -44,6 +44,14 @@ export const CMD = {
   autostartSet: 'autostart_set',
   shortcutsStatus: 'shortcuts_status',
   launchedInBackground: 'launched_in_background',
+  pmManagers: 'pm_managers',
+  pmInstalled: 'pm_installed',
+  pmOutdated: 'pm_outdated',
+  pmSearch: 'pm_search',
+  pmInstall: 'pm_install',
+  pmUpgrade: 'pm_upgrade',
+  pmUpgradeAll: 'pm_upgrade_all',
+  pmUninstall: 'pm_uninstall',
   pickPath: 'pick_path',
 } as const;
 

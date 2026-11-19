@@ -5,6 +5,7 @@ import { useAutostart, usePrefs, useSetPrefs, useShortcuts, type Prefs } from '.
 const MODULES: { key: keyof Prefs['modules']; label: string }[] = [
   { key: 'projects', label: 'Projects' },
   { key: 'ports', label: 'Ports' },
+  { key: 'packages', label: 'Packages' },
   { key: 'winservices', label: 'Windows services' },
 ];
 
