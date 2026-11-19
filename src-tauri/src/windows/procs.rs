@@ -40,19 +40,37 @@ pub fn identify(pid: u32) -> Option<ProcId> {
         if code != STILL_ACTIVE {
             return None;
         }
-        let (mut created, mut exited, mut kernel, mut user) = (
-            FILETIME::default(),
-            FILETIME::default(),
-            FILETIME::default(),
-            FILETIME::default(),
-        );
-        GetProcessTimes(handle.0, &mut created, &mut exited, &mut kernel, &mut user).ok()?;
-        let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
         Some(ProcId {
             pid,
-            created_at_ms: ticks.saturating_sub(FILETIME_UNIX_OFFSET) / 10_000,
+            created_at_ms: creation_ms(handle.0)?,
         })
     }
+}
+
+/// # Safety
+/// `handle` must be a valid process handle with query rights.
+unsafe fn creation_ms(handle: HANDLE) -> Option<u64> {
+    let (mut created, mut exited, mut kernel, mut user) = (
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+    );
+    GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user).ok()?;
+    let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+    Some(ticks.saturating_sub(FILETIME_UNIX_OFFSET) / 10_000)
+}
+
+/// Identity of a child we spawned, read through its own handle. Unlike `identify`, this still
+/// works if the child has already exited, so an instantly-exiting service still gets an identity.
+pub fn identify_child(child: &std::process::Child) -> Option<ProcId> {
+    use std::os::windows::io::AsRawHandle;
+    // SAFETY: the Child owns a valid process handle for as long as it is borrowed here.
+    let created_at_ms = unsafe { creation_ms(HANDLE(child.as_raw_handle())) }?;
+    Some(ProcId {
+        pid: child.id(),
+        created_at_ms,
+    })
 }
 
 /// True only if a process with this PID is running *and* was created at the recorded time.
@@ -109,6 +127,20 @@ mod tests {
         if let Some(id) = id {
             assert!(!is_alive(&id));
         }
+    }
+
+    #[test]
+    fn a_child_that_already_exited_can_still_be_identified_from_its_handle() {
+        let mut child = Command::new("cmd")
+            .args(["/c", "exit", "0"])
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        child.wait().unwrap();
+        let id = identify_child(&child).expect("handle outlives the process");
+        assert_eq!(id.pid, child.id());
+        assert!(id.created_at_ms > 0);
+        assert!(!is_alive(&id));
     }
 
     #[test]
