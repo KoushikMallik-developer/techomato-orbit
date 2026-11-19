@@ -5,6 +5,7 @@ pub mod error;
 pub mod models;
 pub mod repo;
 pub mod secrets;
+pub mod tray;
 pub mod windows;
 
 use secrets::SecretStore;
@@ -21,6 +22,13 @@ fn data_dir(app: &tauri::App) -> Result<std::path::PathBuf, Box<dyn std::error::
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            // Closing the window hides it to the tray; Quit in the tray menu really exits.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
             let dir = data_dir(app)?;
             match db::open(&dir.join("orbit.db")) {
@@ -46,6 +54,7 @@ pub fn run() {
                     app.manage(database);
                     app.manage(secrets);
                     app.manage(sup);
+                    tray::setup(app)?;
                     Ok(())
                 }
                 Err(e) => {

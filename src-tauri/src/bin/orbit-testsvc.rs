@@ -46,6 +46,7 @@ fn install_handler() {
 fn serve(port: u16) {
     let listener = TcpListener::bind(("127.0.0.1", port)).expect("bind");
     listener.set_nonblocking(true).unwrap();
+    println!("listening on {port}");
     while !STOP.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((mut s, _)) => {
