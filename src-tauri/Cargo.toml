@@ -21,6 +21,8 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-dialog = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Threading"] }
+sysinfo = "0.40.4"
 
 [profile.release]
 codegen-units = 1

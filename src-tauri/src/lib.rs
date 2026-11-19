@@ -4,6 +4,7 @@ pub mod error;
 pub mod models;
 pub mod repo;
 pub mod secrets;
+pub mod windows;
 
 use secrets::{InMemorySecretStore, SecretStore};
 use std::sync::Arc;
