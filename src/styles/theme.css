@@ -1,0 +1,63 @@
+/* Techomato Orbit tokens (Tailwind v4, CSS-first). Values come from the Techomato design
+ * language: paper, ink, tomato. Semantic tokens flip under [data-theme='dark'].
+ * Never hardcode a hex in a component; read these tokens. */
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme {
+  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --font-display:
+    'Bricolage Grotesque Variable', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+
+  --color-canvas: #f5f2ec;
+  --color-paper: #ffffff;
+  --color-raised: #efeae1;
+  --color-border: #e4dfd5;
+  --color-fg: #17181c;
+  --color-fg-muted: #45484f;
+  --color-fg-subtle: #5b5f6a;
+
+  --color-accent: #c8381f;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: #fbe6e0;
+  --color-focus: #1f5fcc;
+
+  --color-running: #2f5d3a;
+  --color-running-soft: #e4efe3;
+  --color-running-dot: #3f8f55;
+  --color-stopped-dot: #8d919b;
+  --color-warn: #8a3b05;
+  --color-warn-soft: #fdebd7;
+  --color-warn-dot: #d98a1f;
+  --color-danger: #b3261e;
+  --color-danger-soft: #fbe3e1;
+  --color-danger-dot: #d9382e;
+
+  --radius-card: 22px;
+}
+
+[data-theme='dark'] {
+  --color-canvas: #141417;
+  --color-paper: #1c1d22;
+  --color-raised: #25272d;
+  --color-border: #2c2e35;
+  --color-fg: #f1efea;
+  --color-fg-muted: #c9cbd2;
+  --color-fg-subtle: #a3a6af;
+
+  --color-accent: #d9482e;
+  --color-accent-soft: #3a1e18;
+  --color-focus: #7fa6f5;
+
+  --color-running: #7cc45c;
+  --color-running-soft: #1e2f22;
+  --color-running-dot: #7cc45c;
+  --color-stopped-dot: #6d717c;
+  --color-warn: #f0b27a;
+  --color-warn-soft: #3a2616;
+  --color-warn-dot: #f0b27a;
+  --color-danger: #f28b82;
+  --color-danger-soft: #3b1f1d;
+  --color-danger-dot: #f28b82;
+}
