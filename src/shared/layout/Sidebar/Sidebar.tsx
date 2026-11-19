@@ -4,6 +4,7 @@ import { Button } from '@/shared/ui/Button';
 
 const ITEMS: { key: ModuleKey; label: string }[] = [
   { key: 'services', label: 'Services' },
+  { key: 'projects', label: 'Projects' },
   { key: 'ports', label: 'Ports' },
   { key: 'logs', label: 'Logs' },
   { key: 'settings', label: 'Settings' },
