@@ -34,6 +34,9 @@ export const CMD = {
   projectStart: 'project_start',
   projectStop: 'project_stop',
   projectRestart: 'project_restart',
+  winserviceList: 'winservice_list',
+  winservicePins: 'winservice_pins',
+  winserviceSetPins: 'winservice_set_pins',
   pickPath: 'pick_path',
 } as const;
 

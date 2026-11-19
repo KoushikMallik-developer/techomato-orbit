@@ -137,6 +137,9 @@ pub fn run() {
             commands::projects::project_start,
             commands::projects::project_stop,
             commands::projects::project_restart,
+            commands::winservices::winservice_list,
+            commands::winservices::winservice_pins,
+            commands::winservices::winservice_set_pins,
             commands::pick_path,
         ])
         .run(tauri::generate_context!())
