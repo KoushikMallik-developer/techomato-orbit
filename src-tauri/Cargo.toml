@@ -1,0 +1,36 @@
+[package]
+name = "techomato-orbit"
+version = "0.1.0"
+description = "Techomato Orbit — your local dev machine in one window"
+authors = ["Techomato"]
+license = "MIT"
+default-run = "techomato-orbit"
+edition = "2021"
+
+[lib]
+name = "orbit_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+tauri-plugin-dialog = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Console", "Win32_System_JobObjects", "Win32_UI_WindowsAndMessaging", "Win32_Security", "Win32_Security_Credentials"] }
+sysinfo = "0.40.4"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+[dev-dependencies]
+tempfile = "3"
