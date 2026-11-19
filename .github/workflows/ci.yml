@@ -26,5 +26,5 @@ jobs:
         working-directory: src-tauri
       - run: cargo test
         working-directory: src-tauri
-      - run: cargo test -- --ignored
+      - run: cargo test -- --ignored --skip manual_real
         working-directory: src-tauri
