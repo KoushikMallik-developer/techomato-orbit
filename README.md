@@ -8,6 +8,11 @@ Built with Tauri 2 (Rust) + React + TypeScript. Design: `docs/superpowers/specs/
 
 Inspired by the macOS app Nexus Console. No code or assets are shared with it.
 
+## Install
+
+Build the installers with `npm run release` (see `docs/releasing.md`). The setup `.exe` installs
+for you or for all users; the `.msi` is machine-wide.
+
 ## Develop
 
 Needs Node 22.12+, Rust (rustup, MSVC toolchain), and the Visual Studio C++ Build Tools.
@@ -35,3 +40,11 @@ notifications with history, a Ctrl+K command palette, global shortcuts, and a Se
 Packages: browse, search, install, upgrade and uninstall software through winget, Chocolatey and
 Scoop (whichever are installed). Output streams live; uninstall and upgrade-all ask first.
 Chocolatey changes need Orbit started as administrator. Scoop support is untested on a real machine.
+
+Doctor: a read-only health check of this PC (drives, caches, memory, startup programs, power plan,
+pending restart, WSL, Docker, Ollama). Every finding is tagged Speed, Storage or Info, and clearing
+disk space is never presented as a speed-up. Fixes (clear a cache, disable a startup program, switch
+power plan) run only when you press a button and confirm.
+
+Updates: Settings can check for a new version on request or at launch. Updates are signed and
+install only when you press Install.

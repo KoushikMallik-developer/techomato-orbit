@@ -129,6 +129,31 @@ administrator. Scoop runs through Windows PowerShell with `-File` so arguments s
 The Terminal module planned for Plan 3 was dropped by the user; the `terminal` module preference
 still exists but has no screen.
 
+## Plan 4 additions: Doctor, updates, installer
+
+**Doctor** (`src-tauri/src/doctor/`). `parse.rs` reads `reg query` and `powercfg /list` output,
+`rules.rs` turns measurements into findings (all thresholds live there), `probes.rs` gathers the
+measurements, `fixes.rs` is the closed set of fixes, `fsutil.rs` sizes and clears folders without
+following links. `doctor_scan` streams `doctor://finding` events and then `doctor://done`;
+`doctor_fix` asks natively first. Probes only read: nothing starts a service, VM or daemon (WSL and
+Docker are detected from the registry, files and the process list, never by running `wsl` or
+`docker`). Cache folders come from the enum and two Windows roots, never from the UI; the fix is
+re-validated against the live machine (an enabled startup entry that exists, a listed power plan,
+a browser that is not running). Disabling a startup program sets the same marker Task Manager uses
+and is reversible. Cleanup findings are tagged `storage`, never `speed`.
+
+**Updates** (`commands/updates.rs`). `tauri-plugin-updater` against a signed `latest.json` on GitHub
+releases; the public key is in `tauri.conf.json`. The download is verified first, then services are
+stopped as Quit does, then the installer runs. Automatic check at launch is a preference
+(`autoUpdateCheck`, off by default) and only notifies. See `docs/releasing.md`.
+
+**Installer** (`tauri.conf.json`). NSIS with a per-user or per-machine choice, an MSI, and an
+embedded WebView2 bootstrapper. The elevated helper validates its own arguments and result path, so
+a per-machine install needs no change to it.
+
+The VSCode cleanup and Claude Chats modules from the original design were dropped by the user; their
+module preferences (`vscode`, `claudeChats`, `terminal`) still exist but have no screens.
+
 ## Known gaps (tracked for later plans)
 
 - `https://` health URLs are only checked as a TCP connect (no TLS stack).

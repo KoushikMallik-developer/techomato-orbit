@@ -1,0 +1,43 @@
+name: Release
+# Push a tag like v0.2.0 to build the installers. The release is created as a draft: publish it
+# to make it (and its latest.json update manifest) visible to the updater.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      # Third-party actions that can see the signing key are pinned to a commit, not a moving tag.
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with: { toolchain: stable }
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with: { workspaces: src-tauri }
+      - run: npm ci
+      - name: Tag matches the app version
+        run: node scripts/check-version.mjs "${{ github.ref_name }}"
+      - name: Signing key is configured
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASS: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: test -n "$KEY" -a -n "$PASS" || { echo "Add the TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets (see docs/releasing.md)"; exit 1; }
+      - run: npm test
+      - run: cargo test
+        working-directory: src-tauri
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Techomato Orbit ${{ github.ref_name }}'
+          releaseBody: 'Download the setup .exe (or the .msi for a machine-wide install) below.'
+          releaseDraft: true
+          prerelease: false

@@ -1,0 +1,5 @@
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+    SecurityHealth    REG_EXPAND_SZ    %windir%\system32\SecurityHealthSystray.exe
+    Example Agent    REG_SZ    "C:\Program Files\Example Agent\tray.exe"
+

@@ -2,6 +2,7 @@ import {
   FolderKanban,
   Moon,
   Network,
+  Stethoscope,
   Package,
   ScrollText,
   Search,
@@ -19,13 +20,14 @@ type Item = {
   key: ModuleKey;
   label: string;
   icon: LucideIcon;
-  pref?: 'projects' | 'ports' | 'packages';
+  pref?: 'projects' | 'ports' | 'packages' | 'doctor';
 };
 const RUN: Item[] = [
   { key: 'services', label: 'Services', icon: ServerCog },
   { key: 'projects', label: 'Projects', icon: FolderKanban, pref: 'projects' },
   { key: 'ports', label: 'Ports', icon: Network, pref: 'ports' },
   { key: 'packages', label: 'Packages', icon: Package, pref: 'packages' },
+  { key: 'doctor', label: 'Doctor', icon: Stethoscope, pref: 'doctor' },
   { key: 'logs', label: 'Logs', icon: ScrollText },
 ];
 

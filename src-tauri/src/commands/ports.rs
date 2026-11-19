@@ -4,7 +4,7 @@ use crate::engine::preflight::port_in_use;
 use crate::engine::supervisor::Supervisor;
 use crate::error::AppResult;
 use crate::repo::services as repo;
-use crate::windows::{net::list_endpoints, procs::children_of};
+use crate::windows::{net::list_endpoints, procs::process_tree};
 use std::sync::Arc;
 use tauri::State;
 
@@ -13,10 +13,18 @@ pub async fn ports_list(
     db: State<'_, Arc<Db>>,
     sup: State<'_, Supervisor>,
 ) -> AppResult<Vec<PortRow>> {
-    let endpoints = list_endpoints()?;
     let specs = repo::list(&db)?;
     let runtimes = sup.all_runtime()?;
-    Ok(annotate(endpoints, &runtimes, &specs, &children_of))
+    // One process snapshot per refresh, off the async threads.
+    tauri::async_runtime::spawn_blocking(move || {
+        let endpoints = list_endpoints()?;
+        let tree = process_tree();
+        Ok(annotate(endpoints, &runtimes, &specs, &|p| {
+            tree.get(&p).cloned().unwrap_or_default()
+        }))
+    })
+    .await
+    .map_err(|e| crate::error::AppError::new(crate::error::ErrorKind::Internal, e.to_string()))?
 }
 
 /// True if something is listening on `port` (used by the "is it free?" box and the watch list).

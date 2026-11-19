@@ -4,6 +4,7 @@ import { queryClient } from './queryClient';
 import { Bootstrap } from './Bootstrap';
 import { store, useAppSelector } from './store';
 import { ProjectsPage } from '@/features/projects/pages/ProjectsPage';
+import { DoctorPage } from '@/features/doctor/pages/DoctorPage';
 import { PackagesPage } from '@/features/packages/pages/PackagesPage';
 import { PortsPage } from '@/features/ports/pages/PortsPage';
 import { SettingsPage } from '@/features/settings/pages/SettingsPage';
@@ -21,6 +22,7 @@ function Content() {
       {module === 'projects' && <ProjectsPage />}
       {module === 'ports' && <PortsPage />}
       {module === 'packages' && <PackagesPage />}
+      {module === 'doctor' && <DoctorPage />}
       {module === 'logs' && <LogsPage />}
       {module === 'settings' && <SettingsPage />}
       <Palette />

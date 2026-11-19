@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod doctor;
 pub mod elevated;
 pub mod engine;
 pub mod error;
@@ -32,6 +33,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(shortcuts::plugin())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -39,6 +41,7 @@ pub fn run() {
         ))
         .manage(shortcuts::Shortcuts::default())
         .manage(commands::packages::PmBusy::default())
+        .manage(commands::doctor::DoctorBusy::default())
         .on_window_event(|window, event| {
             // Closing the window hides it to the tray; Quit in the tray menu really exits.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -96,10 +99,16 @@ pub fn run() {
                         let _ = log_handle.emit("log://line", batch);
                     });
                     sup.adopt_on_startup();
+                    let notify_db_for_update = database.clone();
                     app.manage(database);
                     app.manage(secrets);
                     app.manage(sup);
                     tray::setup(app)?;
+                    if repo::settings::prefs(&notify_db_for_update)
+                        .is_ok_and(|p| p.auto_update_check)
+                    {
+                        commands::updates::announce_in_background(app.handle().clone());
+                    }
                     *app.state::<shortcuts::Shortcuts>().0.lock().unwrap() =
                         shortcuts::register_all(app.handle());
                     Ok(())
@@ -167,6 +176,10 @@ pub fn run() {
             commands::packages::pm_upgrade,
             commands::packages::pm_upgrade_all,
             commands::packages::pm_uninstall,
+            commands::updates::update_check,
+            commands::updates::update_install,
+            commands::doctor::doctor_scan,
+            commands::doctor::doctor_fix,
             commands::pick_path,
         ])
         .run(tauri::generate_context!())

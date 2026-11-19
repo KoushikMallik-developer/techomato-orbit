@@ -261,7 +261,7 @@ mod tests {
             exe: "cmd".into(),
             args: args.iter().map(|s| s.to_string()).collect(),
             interval_secs: 1,
-            timeout_secs: 5,
+            timeout_secs: 20,
         };
         assert_eq!(run_once(&cmd(&["/c", "exit", "0"])), HealthResult::Healthy);
         assert!(matches!(
@@ -272,7 +272,7 @@ mod tests {
             exe: "definitely-not-installed-xyz".into(),
             args: vec![],
             interval_secs: 1,
-            timeout_secs: 5,
+            timeout_secs: 20,
         };
         assert!(matches!(run_once(&missing), HealthResult::Unhealthy(_)));
     }

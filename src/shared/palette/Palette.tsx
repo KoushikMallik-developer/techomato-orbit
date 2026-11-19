@@ -63,6 +63,7 @@ export function Palette() {
     if (prefs?.modules.projects !== false) list.push(go('projects', 'Go to Projects'));
     if (prefs?.modules.ports !== false) list.push(go('ports', 'Go to Ports'));
     if (prefs?.modules.packages !== false) list.push(go('packages', 'Go to Packages'));
+    if (prefs?.modules.doctor !== false) list.push(go('doctor', 'Go to Doctor'));
     list.push(go('settings', 'Open settings'), {
       id: 'theme',
       title: 'Toggle theme',

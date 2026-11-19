@@ -52,6 +52,10 @@ export const CMD = {
   pmUpgrade: 'pm_upgrade',
   pmUpgradeAll: 'pm_upgrade_all',
   pmUninstall: 'pm_uninstall',
+  updateCheck: 'update_check',
+  updateInstall: 'update_install',
+  doctorScan: 'doctor_scan',
+  doctorFix: 'doctor_fix',
   pickPath: 'pick_path',
 } as const;
 

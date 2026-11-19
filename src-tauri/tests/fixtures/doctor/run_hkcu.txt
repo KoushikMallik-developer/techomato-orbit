@@ -1,0 +1,11 @@
+
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
+    OneDrive    REG_SZ    "C:\Users\User\AppData\Local\Microsoft\OneDrive\OneDrive.exe" /background
+    Discord    REG_SZ    "C:\Users\User\AppData\Local\Discord\Update.exe" --processStart Discord.exe
+    com.squirrel.slack.slack    REG_SZ    "C:\Users\User\AppData\Local\slack\slack.exe" --process-start-args --startup
+    Docker Desktop    REG_SZ    C:\Program Files\Docker\Docker\Docker Desktop.exe
+    ExampleSync    REG_SZ    C:\Program Files\Example\Sync.exe --minimized
+    MicrosoftEdgeAutoLaunch_E98041AFC91A3E7219227D71DDDDB2EF    REG_SZ    "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --no-startup-window --win-session-start
+    MicrosoftEdgeAutoLaunch_C4FF36124F026FCF2C695203DDAF7A11    REG_SZ    "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --no-startup-window --win-session-start
+    MicrosoftEdgeAutoLaunch_18494D48D06F399E6DAA0E04D61DA0B2    REG_SZ    "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --no-startup-window --win-session-start
+

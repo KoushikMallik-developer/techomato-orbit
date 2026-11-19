@@ -1,0 +1,17 @@
+name: Audit
+# Weekly check for known security holes in dependencies. Kept out of CI so a new advisory
+# never blocks an unrelated pull request.
+on:
+  schedule: [{ cron: '0 6 * * 1' }]
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm audit --omit=dev --audit-level=high
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+        working-directory: src-tauri

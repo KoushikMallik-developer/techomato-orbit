@@ -1,7 +1,7 @@
 //! Process identity. A PID alone is not an identity (Windows reuses them), so a process is
 //! `pid + creation time`.
 
-use sysinfo::{Pid, ProcessesToUpdate, System};
+use sysinfo::{ProcessesToUpdate, System};
 use windows::Win32::Foundation::{CloseHandle, FILETIME, HANDLE};
 use windows::Win32::System::Threading::{
     GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -78,18 +78,27 @@ pub fn is_alive(id: &ProcId) -> bool {
     identify(id.pid) == Some(*id)
 }
 
-/// Direct children of `pid` (not the whole tree; Job Objects cover the tree).
-pub fn children_of(pid: u32) -> Vec<u32> {
+/// Every process's direct children, from one snapshot (callers that look up many parents should
+/// take this once instead of calling `children_of` per parent).
+pub fn process_tree() -> std::collections::HashMap<u32, Vec<u32>> {
+    let mut tree: std::collections::HashMap<u32, Vec<u32>> = Default::default();
     let Ok(mut sys) = System::new() else {
-        return Vec::new();
+        return tree;
     };
     sys.refresh_processes(ProcessesToUpdate::All, true);
-    let parent = Pid::from_u32(pid);
-    sys.processes()
-        .values()
-        .filter(|p| p.parent() == Some(parent))
-        .map(|p| p.pid().as_u32())
-        .collect()
+    for p in sys.processes().values() {
+        if let Some(parent) = p.parent() {
+            tree.entry(parent.as_u32())
+                .or_default()
+                .push(p.pid().as_u32());
+        }
+    }
+    tree
+}
+
+/// Direct children of `pid` (not the whole tree; Job Objects cover the tree).
+pub fn children_of(pid: u32) -> Vec<u32> {
+    process_tree().remove(&pid).unwrap_or_default()
 }
 
 #[cfg(test)]

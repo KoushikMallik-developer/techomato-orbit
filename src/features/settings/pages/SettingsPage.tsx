@@ -1,11 +1,14 @@
 import { Card } from '@/shared/ui/Card';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { useUpdates } from '../api/useUpdates';
+import { Button } from '@/shared/ui/Button';
 import { useAutostart, usePrefs, useSetPrefs, useShortcuts, type Prefs } from '../api/usePrefs';
 
 const MODULES: { key: keyof Prefs['modules']; label: string }[] = [
   { key: 'projects', label: 'Projects' },
   { key: 'ports', label: 'Ports' },
   { key: 'packages', label: 'Packages' },
+  { key: 'doctor', label: 'Doctor' },
   { key: 'winservices', label: 'Windows services' },
 ];
 
@@ -37,6 +40,7 @@ export function SettingsPage() {
   const save = useSetPrefs();
   const shortcuts = useShortcuts();
   const autostart = useAutostart();
+  const updates = useUpdates();
   const p = prefs.data;
   if (!p) return <PageHeader title="Settings" />;
 
@@ -58,6 +62,48 @@ export function SettingsPage() {
           checked={p.refreshHidden}
           onChange={(v) => save.mutate({ ...p, refreshHidden: v })}
         />
+      </Card>
+      <Card>
+        <h2 className="mb-2 text-lg font-bold">Updates</h2>
+        <p className="mb-2 text-sm text-fg-muted">
+          Orbit only contacts the update server when you ask, or at launch if you turn that on. It
+          sends your version and system type, nothing else. Updates are signed and are installed
+          only when you press Install.
+        </p>
+        <Check
+          label="Check for updates when Orbit starts"
+          checked={p.autoUpdateCheck}
+          onChange={(v) => save.mutate({ ...p, autoUpdateCheck: v })}
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+          <Button disabled={updates.check.isPending} onClick={() => updates.check.mutate()}>
+            {updates.check.isPending ? 'Checking…' : 'Check for updates'}
+          </Button>
+          {updates.check.isSuccess && updates.check.data === null && (
+            <span role="status" className="text-fg-muted">
+              You have the latest version.
+            </span>
+          )}
+          {updates.check.data && (
+            <>
+              <span role="status">
+                Version <b>{updates.check.data.version}</b> is available (you have{' '}
+                {updates.check.data.current}).
+              </span>
+              <Button
+                variant="primary"
+                disabled={updates.install.isPending}
+                onClick={() => updates.install.mutate()}
+              >
+                {updates.install.isPending
+                  ? updates.percent === null
+                    ? 'Downloading…'
+                    : `Downloading ${updates.percent}%`
+                  : 'Install'}
+              </Button>
+            </>
+          )}
+        </div>
       </Card>
       <Card>
         <h2 className="mb-2 text-lg font-bold">Modules</h2>

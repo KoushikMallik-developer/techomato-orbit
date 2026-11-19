@@ -10,10 +10,7 @@ export const PrefsSchema = z.object({
     winservices: z.boolean(),
     projects: z.boolean(),
     packages: z.boolean(),
-    terminal: z.boolean(),
     doctor: z.boolean(),
-    vscode: z.boolean(),
-    claudeChats: z.boolean(),
   }),
   notify: z.object({
     started: z.boolean(),
@@ -26,6 +23,7 @@ export const PrefsSchema = z.object({
   }),
   refreshHidden: z.boolean(),
   startWithWindows: z.boolean(),
+  autoUpdateCheck: z.boolean(),
 });
 export type Prefs = z.infer<typeof PrefsSchema>;
 

@@ -9,10 +9,7 @@ pub struct ModulePrefs {
     pub winservices: bool,
     pub projects: bool,
     pub packages: bool,
-    pub terminal: bool,
     pub doctor: bool,
-    pub vscode: bool,
-    pub claude_chats: bool,
 }
 
 impl Default for ModulePrefs {
@@ -22,10 +19,7 @@ impl Default for ModulePrefs {
             winservices: true,
             projects: true,
             packages: true,
-            terminal: true,
             doctor: true,
-            vscode: true,
-            claude_chats: true,
         }
     }
 }
@@ -63,4 +57,6 @@ pub struct Prefs {
     pub notify: NotifyPrefs,
     pub refresh_hidden: bool,
     pub start_with_windows: bool,
+    /// Check for a new version when Orbit starts (it never installs on its own). Off by default.
+    pub auto_update_check: bool,
 }
