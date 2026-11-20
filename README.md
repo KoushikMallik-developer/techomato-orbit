@@ -59,14 +59,14 @@ verified and are installed only after you confirm.
 
 ## What you can do
 
-| | |
-| :--- | :--- |
-| **Services** | Start, stop, restart, monitor health, and view live logs for local services. |
-| **Databases** | Add PostgreSQL, MariaDB, Redis, or MongoDB with one click - no Docker required. |
-| **Projects** | Group services and start or stop dependencies in the correct order. |
-| **Ports** | See the actual port used by every running service. |
-| **Doctor** | Check drives, memory, caches, startup apps, power settings, WSL, Docker, and Ollama. |
-| **Tray mode** | Close the window while Orbit stays available from the system tray. |
+|               |                                                                                      |
+| :------------ | :----------------------------------------------------------------------------------- |
+| **Services**  | Start, stop, restart, monitor health, and view live logs for local services.         |
+| **Databases** | Add PostgreSQL, MariaDB, Redis, or MongoDB with one click - no Docker required.      |
+| **Projects**  | Group services and start or stop dependencies in the correct order.                  |
+| **Ports**     | See the actual port used by every running service.                                   |
+| **Doctor**    | Check drives, memory, caches, startup apps, power settings, WSL, Docker, and Ollama. |
+| **Tray mode** | Close the window while Orbit stays available from the system tray.                   |
 
 ### Handy shortcuts
 
