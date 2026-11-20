@@ -1,6 +1,6 @@
 [package]
 name = "techomato-orbit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Techomato Orbit — your local dev machine in one window"
 authors = ["Techomato"]
 license = "MIT"
