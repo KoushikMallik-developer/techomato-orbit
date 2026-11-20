@@ -7,7 +7,7 @@
 **Your local development machine, organized in one window.**
 
 [![Windows](https://img.shields.io/badge/Platform-Windows-8B5CF6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/KoushikMallik-developer/techomato-orbit/releases)
-[![Latest Release](https://img.shields.io/github/v/release/KoushikMallik-developer/techomato-orbit?style=for-the-badge&color=06B6D4)](https://github.com/KoushikMallik-developer/techomato-orbit/releases/latest)
+[![Latest Release](https://img.shields.io/badge/Latest%20Release-v0.2.0-06B6D4?style=for-the-badge)](https://github.com/KoushikMallik-developer/techomato-orbit/releases/latest)
 [![License](https://img.shields.io/badge/License-Free-F59E0B?style=for-the-badge)](#license)
 
 </div>
@@ -27,7 +27,7 @@ except when downloading a database or checking for updates.
 Use the stable build for the most reliable experience.
 
 1. Open the **[Latest Stable Release](https://github.com/KoushikMallik-developer/techomato-orbit/releases/latest)** page.
-2. Under **Assets**, download `Techomato Orbit_<version>_x64-setup.exe`.
+2. Under **Assets**, download `Techomato Orbit_0.2.0_x64-setup.exe`.
 3. Double-click the downloaded installer.
 4. Choose **Install for me only** or **Install for all users**.
 5. Launch **Techomato Orbit** from the Start menu.
@@ -38,15 +38,17 @@ Use the stable build for the most reliable experience.
 
 ### Latest release version
 
-This option includes the newest published version, including a prerelease when one is published.
+Use this page to see every published version. The newest entry may be a prerelease.
 
 1. Open the **[All Releases](https://github.com/KoushikMallik-developer/techomato-orbit/releases)** page.
 2. Choose the newest release you want to use. A **Pre-release** label means it may be less stable.
-3. Open **Assets** and download `Techomato Orbit_<version>_x64-setup.exe`.
+3. Open **Assets** and download `Techomato Orbit_0.2.0_x64-setup.exe` for release `v0.2.0`,
+   or replace the version with the version you chose.
 4. Run the installer and follow the on-screen instructions.
 
 **MSI installer:** Organizations and managed PCs can use
-`Techomato Orbit_<version>_x64_en-US.msi`. It is machine-wide and may require administrator rights.
+`Techomato Orbit_0.2.0_x64_en-US.msi` for version `0.2.0`. It is machine-wide and may require
+administrator rights.
 
 ### Upgrade an existing installation
 
