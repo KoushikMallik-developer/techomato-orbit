@@ -79,10 +79,9 @@ mod tests {
             Arc::new(|_| {}),
         );
         // Any running service with a process of its own; its state can be read without any rights.
-        let Some(own) = scm::list()
-            .into_iter()
-            .find(|s| s.pid.is_some() && !scm::is_shared_host(s))
-        else {
+        let Some(own) = scm::list().into_iter().find(|s| {
+            s.pid.is_some() && !scm::is_shared_host(s) && scm::running_pid(&s.name).is_some()
+        }) else {
             eprintln!("skipped: no service with a process of its own is running here");
             return;
         };
@@ -92,8 +91,14 @@ mod tests {
 
         let mut names = Names::new();
         tick(&db, &sup, &mut names);
+        std::thread::sleep(Duration::from_millis(100));
+        let stable_pid = scm::running_pid(&own.name);
+        if stable_pid.is_none() {
+            eprintln!("skipped: selected Windows service stopped while the test was running");
+            return;
+        }
         assert_eq!(sup.runtime(&mine).status, Status::Running);
-        assert_eq!(sup.runtime(&mine).pid, scm::running_pid(&own.name));
+        assert_eq!(sup.runtime(&mine).pid, stable_pid);
         assert_eq!(sup.runtime(&other).status, Status::Stopped);
         // Both lookups are remembered, so the next tick lists nothing.
         assert_eq!(names.len(), 2);
