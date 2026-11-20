@@ -28,7 +28,7 @@ fn category_from_str(s: &str) -> AppResult<Category> {
 
 const COLUMNS: &str = "id,name,description,category,project_id,working_dir,executable,args_json,\
     run_through_shell,port,startup_timeout_secs,shutdown_timeout_secs,restart_json,health_json,\
-    keep_running_on_quit,allow_multiple,enabled";
+    keep_running_on_quit,enabled";
 
 fn row_to_spec(row: &Row) -> rusqlite::Result<(ServiceSpec, String)> {
     // JSON/category parse errors are surfaced as conversion failures.
@@ -61,8 +61,7 @@ fn row_to_spec(row: &Row) -> rusqlite::Result<(ServiceSpec, String)> {
             .transpose()
             .map_err(|e| conv(e.into()))?,
         keep_running_on_quit: row.get::<_, i64>(14)? != 0,
-        allow_multiple: row.get::<_, i64>(15)? != 0,
-        enabled: row.get::<_, i64>(16)? != 0,
+        enabled: row.get::<_, i64>(15)? != 0,
     };
     Ok((spec, id))
 }
@@ -152,8 +151,8 @@ pub fn create(db: &Db, secrets: &dyn SecretStore, spec: &ServiceSpec) -> AppResu
         tx.execute(
             "INSERT INTO services (id,name,description,category,project_id,working_dir,executable,
              args_json,run_through_shell,port,startup_timeout_secs,shutdown_timeout_secs,restart_json,
-             health_json,keep_running_on_quit,allow_multiple,enabled,created_at,updated_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?18)",
+             health_json,keep_running_on_quit,enabled,created_at,updated_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?17)",
             params![
                 s.id,
                 s.name,
@@ -170,7 +169,6 @@ pub fn create(db: &Db, secrets: &dyn SecretStore, spec: &ServiceSpec) -> AppResu
                 restart,
                 health,
                 s.keep_running_on_quit as i64,
-                s.allow_multiple as i64,
                 s.enabled as i64,
                 now
             ],
@@ -211,7 +209,7 @@ pub fn update(db: &Db, secrets: &dyn SecretStore, spec: &ServiceSpec) -> AppResu
             "UPDATE services SET name=?2,description=?3,category=?4,project_id=?5,working_dir=?6,
              executable=?7,args_json=?8,run_through_shell=?9,port=?10,startup_timeout_secs=?11,
              shutdown_timeout_secs=?12,restart_json=?13,health_json=?14,keep_running_on_quit=?15,
-             allow_multiple=?16,enabled=?17,updated_at=?18 WHERE id=?1",
+             enabled=?16,updated_at=?17 WHERE id=?1",
             params![
                 spec.id,
                 spec.name,
@@ -228,7 +226,6 @@ pub fn update(db: &Db, secrets: &dyn SecretStore, spec: &ServiceSpec) -> AppResu
                 restart,
                 health,
                 spec.keep_running_on_quit as i64,
-                spec.allow_multiple as i64,
                 spec.enabled as i64,
                 now_ms()
             ],
@@ -299,7 +296,6 @@ mod tests {
         s.project_id = Some("p1".into());
         s.run_through_shell = true;
         s.keep_running_on_quit = true;
-        s.allow_multiple = true;
         s.enabled = false;
         let created = create(&db, &secrets, &s).unwrap();
         assert!(!created.id.is_empty());

@@ -11,7 +11,7 @@ export function Button({ variant = 'ghost', size = 'md', className = '', ...rest
     <button
       type="button"
       {...rest}
-      className={`inline-flex items-center justify-center gap-2 rounded-full border-[1.5px] font-semibold transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${buttonVariants[variant]} ${buttonSizes[size]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-full border-ui font-semibold transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${buttonVariants[variant]} ${buttonSizes[size]} ${className}`}
     />
   );
 }

@@ -11,20 +11,25 @@ use tauri_plugin_dialog::DialogExt;
 #[tauri::command]
 pub async fn log_recent(
     sup: State<'_, Supervisor>,
+    db: State<'_, Arc<Db>>,
     service_id: String,
     n: usize,
 ) -> AppResult<Vec<LogLine>> {
+    // Only real services: the id becomes a file name under the logs folder.
+    repo::get(&db, &service_id)?;
     Ok(sup.logs(&service_id).recent(n.min(5000)))
 }
 
 #[tauri::command]
 pub async fn log_history(
     sup: State<'_, Supervisor>,
+    db: State<'_, Arc<Db>>,
     service_id: String,
     offset: usize,
     limit: usize,
     filter: Option<String>,
 ) -> AppResult<Vec<LogLine>> {
+    repo::get(&db, &service_id)?;
     let sink = sup.logs(&service_id);
     tauri::async_runtime::spawn_blocking(move || {
         sink.read_history(offset, limit.min(5000), filter.as_deref())

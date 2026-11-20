@@ -21,13 +21,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowThreadProcessId, PostMessageW, WM_CLOSE,
 };
 
-/// Asks the process to stop, using this executable as the helper.
-pub fn send_graceful(pid: u32) -> AppResult<()> {
-    send_graceful_with(&std::env::current_exe()?, pid)
-}
-
-/// Same, with an explicit helper executable (tests use the test service, which also implements
-/// `--stop-helper`).
+/// Asks the process to stop, using `helper` (the Orbit binary; tests use the test service, which
+/// also implements `--stop-helper`).
 pub fn send_graceful_with(helper: &Path, pid: u32) -> AppResult<()> {
     let status = Command::new(helper)
         .args(["--stop-helper", &pid.to_string()])

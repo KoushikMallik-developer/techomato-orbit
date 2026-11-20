@@ -30,7 +30,6 @@ export type ServiceFormValues = {
   healthInterval: string;
   healthTimeout: string;
   keepRunningOnQuit: boolean;
-  allowMultiple: boolean;
   enabled: boolean;
 };
 
@@ -62,7 +61,6 @@ export function defaultFormValues(): ServiceFormValues {
     healthInterval: '10',
     healthTimeout: '3',
     keepRunningOnQuit: false,
-    allowMultiple: false,
     enabled: true,
   };
 }
@@ -138,7 +136,6 @@ export function formToSpec(f: ServiceFormValues): ServiceSpec {
     restart,
     health,
     keepRunningOnQuit: f.keepRunningOnQuit,
-    allowMultiple: f.allowMultiple,
     enabled: f.enabled,
   };
 }
@@ -174,7 +171,6 @@ export function specToForm(s: ServiceSpec): ServiceFormValues {
     healthInterval: h ? String(h.intervalSecs) : d.healthInterval,
     healthTimeout: h ? String(h.timeoutSecs) : d.healthTimeout,
     keepRunningOnQuit: s.keepRunningOnQuit,
-    allowMultiple: s.allowMultiple,
     enabled: s.enabled,
   };
 }

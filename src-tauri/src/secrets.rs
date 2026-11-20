@@ -1,5 +1,5 @@
 //! Where secret environment values live. The real store is Windows Credential Manager
-//! (added in a later task); the in-memory store backs tests.
+//! (`windows/creds.rs`); the in-memory store backs tests.
 
 use crate::error::AppResult;
 use std::collections::HashMap;

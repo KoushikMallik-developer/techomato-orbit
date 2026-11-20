@@ -1,8 +1,8 @@
 # Techomato Orbit
 
 A free Windows desktop app that puts your local dev machine in one window: the services you run,
-the ports in use, installed software, and machine health. It lives in the system tray and works
-offline.
+one-click databases, and your machine's health. It lives in the system tray and works offline,
+except for downloading a database or an update. Windows 10 or 11, 64-bit.
 
 Built with Tauri 2 (Rust) + React + TypeScript. Design: `docs/superpowers/specs/`. How it fits together: `docs/architecture.md`.
 
@@ -31,15 +31,28 @@ checks, secret environment values in Windows Credential Manager, live logs, and 
 Closing the window hides it to the tray; Quit Orbit stops services unless they are marked
 keep-running.
 
-Also: a Ports view (what is listening, who owns it, end a process, watch a port), Projects
-(group services with dependencies; start in order, stop in reverse), a Windows services list with
-Start/Stop/Restart through a single UAC prompt (Windows' own services are protected), desktop
-notifications with history, a Ctrl+K command palette, global shortcuts, and a Settings page
-(modules, notifications, start with Windows).
+Databases: add PostgreSQL, MariaDB, Redis or MongoDB with one click. Orbit downloads the program
+once (checked against a fixed checksum), keeps it and its data in
+`%LOCALAPPDATA%\Techomato Orbit`, and adds a service that listens on this PC only. No Docker. They
+have no password, so use them for development only. Redis is a community Windows port (version 5).
+Deleting the service deletes its data. Uninstalling Orbit does not, so delete that folder to remove
+every database.
 
-Packages: browse, search, install, upgrade and uninstall software through winget, Chocolatey and
-Scoop (whichever are installed). Output streams live; uninstall and upgrade-all ask first.
-Chocolatey changes need Orbit started as administrator. Scoop support is untested on a real machine.
+Already-running databases: any Redis, PostgreSQL, MySQL/MariaDB or MongoDB that is already running
+(started by hand, or installed as a Windows service) is added to the Services page by itself, as
+an ordinary card with Start, Stop, Force stop, Restart, Logs, Edit and Delete. They keep running
+when Orbit quits. One you started by hand is stopped by ending it at once. One that runs as a
+Windows service is started and stopped through Windows, which asks for administrator rights (a UAC
+prompt) each time. A database another account runs that Orbit cannot inspect is only listed. Delete removes the card; it comes back the next time
+that database is found running.
+
+Add service has templates (Django, Flask, FastAPI, React with Vite, Express, Node, Celery, Docker)
+that only fill in the form.
+
+Also: Projects (group services with dependencies; start in order, stop in reverse), desktop
+notifications with history, a Ctrl+K command palette, global shortcuts, and a Settings page
+(modules, notifications, start with Windows). The Services page shows the port each running service
+is actually listening on.
 
 Doctor: a read-only health check of this PC (drives, caches, memory, startup programs, power plan,
 pending restart, WSL, Docker, Ollama). Every finding is tagged Speed, Storage or Info, and clearing

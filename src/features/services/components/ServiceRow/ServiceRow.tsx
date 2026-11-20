@@ -29,22 +29,28 @@ function useNow(active: boolean): number {
 type Props = {
   spec: ServiceSpec;
   runtime: Runtime | undefined;
+  /** What the service is actually listening on; shown instead of the configured port. */
+  livePorts: number[];
   onEdit: () => void;
   onDelete: () => void;
   onLogs: () => void;
 };
 
-export function ServiceRow({ spec, runtime, onEdit, onDelete, onLogs }: Props) {
+export function ServiceRow({ spec, runtime, livePorts, onEdit, onDelete, onLogs }: Props) {
   const status = runtime?.status ?? 'stopped';
   const live = runtime?.pid != null && runtime.startedAtMs != null;
   const now = useNow(live);
   return (
-    <Card className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h2 className="min-w-0 truncate text-lg font-bold">{spec.name}</h2>
-        <Pill>{spec.category}</Pill>
+    <Card className="flex h-full flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="min-w-0 truncate text-lg font-bold" title={spec.name}>
+          {spec.name}
+        </h2>
         <StatusDot status={status} />
-        <dl className="ml-auto flex gap-5 text-sm text-fg-muted">
+      </div>
+      <div className="flex flex-col items-start gap-3">
+        <Pill>{spec.category}</Pill>
+        <dl className="flex gap-5 text-sm text-fg-muted">
           <div>
             <dt className="text-xs text-fg-subtle">PID</dt>
             <dd className="font-mono">{runtime?.pid ?? '–'}</dd>
@@ -57,7 +63,9 @@ export function ServiceRow({ spec, runtime, onEdit, onDelete, onLogs }: Props) {
           </div>
           <div>
             <dt className="text-xs text-fg-subtle">Port</dt>
-            <dd className="font-mono">{spec.port ?? '–'}</dd>
+            <dd className="font-mono">
+              {livePorts.length > 0 ? livePorts.join(', ') : (spec.port ?? '–')}
+            </dd>
           </div>
         </dl>
       </div>
@@ -66,16 +74,16 @@ export function ServiceRow({ spec, runtime, onEdit, onDelete, onLogs }: Props) {
           {runtime.lastError}
         </p>
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        <ServiceActions id={spec.id} status={status} />
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+        <ServiceActions id={spec.id} name={spec.name} status={status} />
         <span className="ml-auto flex gap-2">
-          <Button size="sm" onClick={onLogs}>
+          <Button size="sm" aria-label={`Logs for ${spec.name}`} onClick={onLogs}>
             Logs
           </Button>
-          <Button size="sm" onClick={onEdit}>
+          <Button size="sm" aria-label={`Edit ${spec.name}`} onClick={onEdit}>
             Edit
           </Button>
-          <Button size="sm" variant="danger" onClick={onDelete}>
+          <Button size="sm" variant="danger" aria-label={`Delete ${spec.name}`} onClick={onDelete}>
             Delete
           </Button>
         </span>

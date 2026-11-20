@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::engine::notify::{port_conflict, Notice};
+use crate::engine::notify::Notice;
 use crate::error::AppResult;
 use crate::models::prefs::Prefs;
 use crate::repo::notifications::{self as repo, StoredNotice};
@@ -46,22 +46,6 @@ pub async fn notification_list(
 #[tauri::command]
 pub async fn notification_clear(db: State<'_, Arc<Db>>) -> AppResult<()> {
     repo::clear(&db)
-}
-
-/// Called by the Ports page when a watched port is taken by another program.
-#[tauri::command]
-pub async fn notify_port_conflict(
-    app: AppHandle,
-    db: State<'_, Arc<Db>>,
-    port: u16,
-    process: String,
-    pid: u32,
-) -> AppResult<()> {
-    let prefs = settings::prefs(&db)?;
-    if let Some(n) = port_conflict(port, &process, pid, &prefs.notify) {
-        deliver(&app, &db, &n, None);
-    }
-    Ok(())
 }
 
 #[tauri::command]

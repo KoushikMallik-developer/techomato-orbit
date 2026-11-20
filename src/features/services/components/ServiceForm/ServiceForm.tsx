@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { z } from 'zod';
 import { CMD } from '@/shared/ipc/commands';
 import { ipc } from '@/shared/ipc/invoke';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
+import { Check, formInputClass } from '@/shared/ui/Field';
 import { useProjects } from '@/features/projects/api/useProjects';
 import { CATEGORIES, type ServiceSpec } from '../../api/services.schema';
 import {
@@ -13,9 +14,9 @@ import {
   type EnvRow,
   type ServiceFormValues,
 } from './formToSpec';
+import { applyTemplate, SERVICE_TEMPLATES } from './serviceTemplates';
 
-const input =
-  'w-full rounded-xl border border-border bg-canvas px-3 py-2 text-sm text-fg placeholder:text-fg-subtle';
+const input = formInputClass;
 
 function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
@@ -23,23 +24,6 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
       {label}
       {children}
       {hint && <span className="text-xs font-normal text-fg-subtle">{hint}</span>}
-    </label>
-  );
-}
-
-function Check({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <label className="flex items-center gap-2 text-sm">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      {label}
     </label>
   );
 }
@@ -61,6 +45,14 @@ export function ServiceForm({ initial, saving, onSave, onCancel }: Props) {
   );
   const projects = useProjects();
   const [error, setError] = useState<string | null>(null);
+  const errorBox = useRef<HTMLParagraphElement>(null);
+  // The form is long: bring a validation message into view and read it out.
+  useEffect(() => {
+    if (error) {
+      errorBox.current?.scrollIntoView({ block: 'center' });
+      errorBox.current?.focus();
+    }
+  }, [error]);
   const [stored, setStored] = useState<Set<string>>(new Set());
   const set = <K extends keyof ServiceFormValues>(k: K, v: ServiceFormValues[K]) =>
     setF((p) => ({ ...p, [k]: v }));
@@ -96,7 +88,27 @@ export function ServiceForm({ initial, saving, onSave, onCancel }: Props) {
   return (
     <Card>
       <form onSubmit={submit} className="flex flex-col gap-5">
-        <h2 className="text-xl font-bold">{initial ? 'Edit service' : 'Add service'}</h2>
+        <h1 className="text-xl font-bold">{initial ? 'Edit service' : 'Add service'}</h1>
+
+        {!initial && (
+          <Field label="Start from" hint="Fills the form below. You can change anything.">
+            <select
+              className={input}
+              value=""
+              onChange={(e) => {
+                const t = SERVICE_TEMPLATES.find((x) => x.id === e.target.value);
+                if (t) setF((p) => applyTemplate(p, t));
+              }}
+            >
+              <option value="">Choose a template…</option>
+              {SERVICE_TEMPLATES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Name">
@@ -138,12 +150,14 @@ export function ServiceForm({ initial, saving, onSave, onCancel }: Props) {
         <Field label="Executable" hint="A full path, or a name found on PATH.">
           <span className="flex gap-2">
             <input
+              aria-label="Executable"
               className={input}
               value={f.executable}
               onChange={(e) => set('executable', e.target.value)}
               required
             />
             <Button
+              aria-label="Browse for executable"
               onClick={async () => {
                 const p = await pick(false);
                 if (p) set('executable', p);
@@ -166,11 +180,13 @@ export function ServiceForm({ initial, saving, onSave, onCancel }: Props) {
         <Field label="Working directory">
           <span className="flex gap-2">
             <input
+              aria-label="Working directory"
               className={input}
               value={f.workingDir}
               onChange={(e) => set('workingDir', e.target.value)}
             />
             <Button
+              aria-label="Browse for working directory"
               onClick={async () => {
                 const p = await pick(true);
                 if (p) set('workingDir', p);
@@ -186,14 +202,14 @@ export function ServiceForm({ initial, saving, onSave, onCancel }: Props) {
           {f.env.map((r, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2">
               <input
-                aria-label="Key"
+                aria-label={`Key of variable ${i + 1}`}
                 placeholder="KEY"
                 className={`${input} w-40 font-mono`}
                 value={r.key}
                 onChange={(e) => setEnv(i, { key: e.target.value })}
               />
               <input
-                aria-label="Value"
+                aria-label={r.key ? `Value of ${r.key}` : `Value of variable ${i + 1}`}
                 type={r.isSecret ? 'password' : 'text'}
                 placeholder={
                   r.isSecret && stored.has(r.key) ? 'Stored. Leave blank to keep.' : 'value'
@@ -209,7 +225,7 @@ export function ServiceForm({ initial, saving, onSave, onCancel }: Props) {
               />
               <Button
                 size="sm"
-                aria-label="Remove variable"
+                aria-label={r.key ? `Remove ${r.key}` : `Remove variable ${i + 1}`}
                 onClick={() =>
                   set(
                     'env',
@@ -402,7 +418,7 @@ export function ServiceForm({ initial, saving, onSave, onCancel }: Props) {
         </div>
 
         {error && (
-          <p role="alert" className="text-sm text-danger">
+          <p ref={errorBox} tabIndex={-1} role="alert" className="text-sm text-danger">
             {error}
           </p>
         )}

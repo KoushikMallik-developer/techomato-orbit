@@ -3,7 +3,7 @@ import { statusLabel, statusTone, type ServiceStatus } from './status';
 const DOT: Record<string, string> = {
   running: 'bg-running-dot',
   stopped: 'bg-stopped-dot',
-  starting: 'bg-warn-dot animate-pulse',
+  starting: 'bg-warn-dot motion-safe:animate-pulse',
   warn: 'bg-warn-dot',
   danger: 'bg-danger-dot',
 };

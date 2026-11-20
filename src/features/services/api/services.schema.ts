@@ -71,7 +71,6 @@ export const ServiceSpecSchema = z.object({
   restart: RestartPolicySchema,
   health: HealthCheckSchema.nullable(),
   keepRunningOnQuit: z.boolean(),
-  allowMultiple: z.boolean(),
   enabled: z.boolean(),
 });
 

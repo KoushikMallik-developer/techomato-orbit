@@ -6,10 +6,7 @@ import { ipc, ipcVoid } from '@/shared/ipc/invoke';
 
 export const PrefsSchema = z.object({
   modules: z.object({
-    ports: z.boolean(),
-    winservices: z.boolean(),
     projects: z.boolean(),
-    packages: z.boolean(),
     doctor: z.boolean(),
   }),
   notify: z.object({
@@ -18,7 +15,6 @@ export const PrefsSchema = z.object({
     crashed: z.boolean(),
     startFailed: z.boolean(),
     healthFailed: z.boolean(),
-    portConflict: z.boolean(),
     autoRestart: z.boolean(),
   }),
   refreshHidden: z.boolean(),

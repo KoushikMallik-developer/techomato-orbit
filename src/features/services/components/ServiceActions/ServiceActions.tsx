@@ -3,7 +3,16 @@ import type { ServiceStatus } from '@/shared/ui/StatusDot/status';
 import { useServiceActions } from '../../api/useRuntime';
 import { availableActions } from './powerState';
 
-export function ServiceActions({ id, status }: { id: string; status: ServiceStatus }) {
+/** `name` makes each button's spoken label unique across the cards ("Start Redis"). */
+export function ServiceActions({
+  id,
+  name,
+  status,
+}: {
+  id: string;
+  name: string;
+  status: ServiceStatus;
+}) {
   const act = useServiceActions();
   const can = availableActions(status);
   return (
@@ -11,6 +20,7 @@ export function ServiceActions({ id, status }: { id: string; status: ServiceStat
       <Button
         size="sm"
         variant="primary"
+        aria-label={`Start ${name}`}
         disabled={!can.start || act.start.isPending}
         onClick={() => act.start.mutate(id)}
       >
@@ -18,6 +28,7 @@ export function ServiceActions({ id, status }: { id: string; status: ServiceStat
       </Button>
       <Button
         size="sm"
+        aria-label={`Stop ${name}`}
         disabled={!can.stop || act.stop.isPending}
         onClick={() => act.stop.mutate(id)}
       >
@@ -25,6 +36,7 @@ export function ServiceActions({ id, status }: { id: string; status: ServiceStat
       </Button>
       <Button
         size="sm"
+        aria-label={`Restart ${name}`}
         disabled={!can.restart || act.restart.isPending}
         onClick={() => act.restart.mutate(id)}
       >
@@ -33,6 +45,7 @@ export function ServiceActions({ id, status }: { id: string; status: ServiceStat
       <Button
         size="sm"
         variant="danger"
+        aria-label={`Force stop ${name}`}
         disabled={!can.forceStop || act.forceStop.isPending}
         onClick={() => act.forceStop.mutate(id)}
       >

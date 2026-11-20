@@ -2,12 +2,15 @@
 
 use crate::db::Db;
 use crate::engine::deps::{self, Cycle};
+use crate::engines::instance::instance_dir;
 use crate::error::{AppError, AppResult, ErrorKind};
 use crate::models::project::{Dep, Edge, OnFailure, Project};
 use crate::repo::services;
 use crate::secrets::SecretStore;
+use crate::windows::scm;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn now_ms() -> i64 {
@@ -115,8 +118,9 @@ pub fn delete(db: &Db, id: &str) -> AppResult<()> {
 }
 
 /// Copies the project, its services (with secrets) and the edges between them.
-/// Edges to services outside the project are kept pointing at the originals.
-pub fn duplicate(db: &Db, secrets: &dyn SecretStore, id: &str) -> AppResult<Project> {
+/// Edges to services outside the project are kept pointing at the originals. A database Orbit made
+/// (it owns a data folder under `root`) is not copied: the copy would share its folder and port.
+pub fn duplicate(db: &Db, secrets: &dyn SecretStore, root: &Path, id: &str) -> AppResult<Project> {
     let original = get(db, id)?;
     let copy = create(
         db,
@@ -130,9 +134,13 @@ pub fn duplicate(db: &Db, secrets: &dyn SecretStore, id: &str) -> AppResult<Proj
     let mut created: Vec<String> = Vec::new();
     let result = (|| -> AppResult<()> {
         let mut map: HashMap<String, String> = HashMap::new();
+        let windows = scm::list();
         for spec in services::list(db)?
             .into_iter()
             .filter(|s| s.project_id.as_deref() == Some(id))
+            .filter(|s| instance_dir(root, &s.working_dir).is_none())
+            // A card for a Windows service is that one service: a copy would drive it twice.
+            .filter(|s| !windows.iter().any(|w| scm::runs(w, &s.executable, &s.args)))
         {
             let old_id = spec.id.clone();
             let mut new_spec = spec;
@@ -428,6 +436,62 @@ mod tests {
     }
 
     #[test]
+    fn duplicating_does_not_copy_an_orbit_database_but_keeps_depending_on_it() {
+        let db = open_in_memory().unwrap();
+        let s = InMemorySecretStore::default();
+        let root = Path::new("C:/orbit");
+        let p = create(&db, &project("Shop")).unwrap();
+        let mut spec = sample();
+        spec.name = "pg".into();
+        spec.port = None;
+        spec.project_id = Some(p.id.clone());
+        spec.working_dir = "C:/orbit/instances/pg-1a2b3c4d".into();
+        let pg = services::create(&db, &s, &spec).unwrap().id;
+        let web = svc(&db, &s, "web", Some(&p.id));
+        set_dependencies(&db, &web, vec![dep(&pg)]).unwrap();
+
+        let copy = duplicate(&db, &s, root, &p.id).unwrap();
+        let all = services::list(&db).unwrap();
+        let mine: Vec<_> = all
+            .iter()
+            .filter(|x| x.project_id.as_deref() == Some(&copy.id))
+            .collect();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].name, "web");
+        assert_eq!(dependencies(&db, &mine[0].id).unwrap(), vec![dep(&pg)]);
+    }
+
+    #[test]
+    fn duplicating_does_not_copy_a_card_for_a_windows_service() {
+        let Some(own) = scm::list()
+            .into_iter()
+            .find(|w| w.pid.is_some() && !scm::is_shared_host(w))
+        else {
+            eprintln!("skipped: no service with a process of its own is running here");
+            return;
+        };
+        let db = open_in_memory().unwrap();
+        let s = InMemorySecretStore::default();
+        let p = create(&db, &project("Shop")).unwrap();
+        let mut spec = sample();
+        spec.name = "a windows service".into();
+        spec.port = None;
+        spec.project_id = Some(p.id.clone());
+        (spec.executable, spec.args) = scm::split_command(&own.command);
+        services::create(&db, &s, &spec).unwrap();
+        svc(&db, &s, "web", Some(&p.id));
+
+        let copy = duplicate(&db, &s, Path::new("C:/orbit"), &p.id).unwrap();
+        let names: Vec<_> = services::list(&db)
+            .unwrap()
+            .into_iter()
+            .filter(|x| x.project_id.as_deref() == Some(&copy.id))
+            .map(|x| x.name)
+            .collect();
+        assert_eq!(names, ["web"]);
+    }
+
+    #[test]
     fn duplicating_copies_services_secrets_and_inner_edges_with_new_ids() {
         use crate::models::service::EnvVar;
         use crate::secrets::SecretStore;
@@ -448,7 +512,7 @@ mod tests {
         let web = svc(&db, &s, "web", Some(&p.id));
         set_dependencies(&db, &web, vec![dep(&api), dep(&outside)]).unwrap();
 
-        let copy = duplicate(&db, &s, &p.id).unwrap();
+        let copy = duplicate(&db, &s, Path::new("C:/orbit"), &p.id).unwrap();
         assert_ne!(copy.id, p.id);
         assert!(copy.name.contains("Shop") && copy.name.contains("copy"));
 

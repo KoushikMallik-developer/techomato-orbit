@@ -4,12 +4,12 @@ import { CMD } from '@/shared/ipc/commands';
 import { ipc } from '@/shared/ipc/invoke';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
+import { formInputClass, miniSelectClass } from '@/shared/ui/Field';
 import type { ServiceSpec } from '@/features/services/api/services.schema';
 import { ON_FAILURE, type Edge, type OnFailure, type Project } from '../api/projects.schema';
 import { layoutLevels } from '../dependencyGraph';
 
-const input =
-  'w-full rounded-xl border border-border bg-canvas px-3 py-2 text-sm text-fg placeholder:text-fg-subtle';
+const input = formInputClass;
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -108,8 +108,14 @@ export function ProjectEditor({
         </Field>
         <Field label="Root directory">
           <span className="flex gap-2">
-            <input className={input} value={rootDir} onChange={(e) => setRootDir(e.target.value)} />
+            <input
+              aria-label="Root directory"
+              className={input}
+              value={rootDir}
+              onChange={(e) => setRootDir(e.target.value)}
+            />
             <Button
+              aria-label="Browse for root directory"
               onClick={async () => {
                 const p = await ipc(CMD.pickPath, { folder: true }, z.string().nullable());
                 if (p) setRootDir(p);
@@ -121,7 +127,7 @@ export function ProjectEditor({
         </Field>
       </Card>
 
-      <Card className="flex flex-col gap-2">
+      <Card role="group" aria-label="Services in this project" className="flex flex-col gap-2">
         <h2 className="text-lg font-bold">Services in this project</h2>
         {services.length === 0 && (
           <p className="text-sm text-fg-muted">Add services on the Services page first.</p>
@@ -145,7 +151,8 @@ export function ProjectEditor({
           <h2 className="text-lg font-bold">Start order</h2>
           <p className="text-sm text-fg-muted">
             A service starts after the services it needs are running. If a needed service fails,
-            choose whether to stop there or carry on.
+            choose whether to stop there or carry on. Changes here are saved as soon as you make
+            them; Cancel does not undo them.
           </p>
           {memberSpecs.map((s) => {
             const mine = edges.filter((e) => e.serviceId === s.id);
@@ -166,7 +173,7 @@ export function ProjectEditor({
                     {nameOf(e.dependsOnId)}
                     <select
                       aria-label={`If ${nameOf(e.dependsOnId)} fails`}
-                      className="rounded-full border border-border bg-canvas px-3 py-1 text-xs"
+                      className={miniSelectClass}
                       value={e.onFailure}
                       onChange={(ev) =>
                         save(
@@ -194,7 +201,7 @@ export function ProjectEditor({
                 {candidates.length > 0 && (
                   <select
                     aria-label={`Add a service ${s.name} needs`}
-                    className="w-fit rounded-full border border-border bg-canvas px-3 py-1 text-xs"
+                    className={`w-fit ${miniSelectClass}`}
                     value=""
                     onChange={(ev) => {
                       if (ev.target.value)
@@ -235,9 +242,12 @@ export function ProjectEditor({
 
       <div className="flex gap-2">
         <Button type="submit" variant="primary" disabled={saving || name.trim() === ''}>
-          Save
+          {saving ? 'Saving…' : 'Save'}
         </Button>
         <Button onClick={onCancel}>Cancel</Button>
+        {name.trim() === '' && (
+          <span className="self-center text-sm text-fg-muted">Enter a name to save.</span>
+        )}
       </div>
     </form>
   );

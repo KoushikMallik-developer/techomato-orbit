@@ -1,1 +1,1 @@
-export { inputClass, SearchInput, Select } from './Field';
+export { Check, formInputClass, inputClass, miniSelectClass, SearchInput, Select } from './Field';

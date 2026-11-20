@@ -29,7 +29,6 @@ const rustJson = {
     timeoutSecs: 2,
   },
   keepRunningOnQuit: false,
-  allowMultiple: false,
   enabled: true,
 };
 

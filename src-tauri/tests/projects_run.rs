@@ -93,7 +93,6 @@ fn svc(h: &H, name: &str, args: Option<&[&str]>, keep_running: bool) -> String {
         restart: RestartPolicy::Never,
         health: None,
         keep_running_on_quit: keep_running,
-        allow_multiple: false,
         enabled: true,
     };
     services::create(&h.db, h.secrets.as_ref(), &spec)

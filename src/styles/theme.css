@@ -2,8 +2,6 @@
  * language: paper, ink, tomato. Semantic tokens flip under [data-theme='dark'].
  * Never hardcode a hex in a component; read these tokens. */
 
-@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
-
 @theme {
   --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
   --font-display:
@@ -18,9 +16,13 @@
   --color-fg-muted: #45484f;
   --color-fg-subtle: #5b5f6a;
 
+  /* Contrast notes (WCAG): white on accent 5.2:1; accent-text on accent-soft 5.3:1; field-border
+   * on white 3.9:1 (3:1 needed for input edges). Re-check these if you change the three. */
   --color-accent: #c8381f;
   --color-accent-fg: #ffffff;
   --color-accent-soft: #fbe6e0;
+  --color-accent-text: #b0321b;
+  --color-field-border: #85806f;
   --color-focus: #1f5fcc;
 
   --color-running: #2f5d3a;
@@ -45,6 +47,7 @@
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
   --color-canvas: #141417;
   --color-paper: #1c1d22;
   --color-raised: #25272d;
@@ -53,11 +56,14 @@
   --color-fg-muted: #c9cbd2;
   --color-fg-subtle: #a3a6af;
 
-  --color-accent: #d9482e;
+  /* Dark: white on accent 5.1:1; accent-text on accent-soft 6.3:1; field-border on paper 3.6:1. */
+  --color-accent: #c63f27;
   --color-accent-soft: #3a1e18;
+  --color-accent-text: #f4896f;
+  --color-field-border: #70737d;
   --color-focus: #7fa6f5;
   --color-border-strong: #3d4048;
-  --color-accent-hover: #e0583f;
+  --color-accent-hover: #b8381f;
   --color-scrim: rgb(0 0 0 / 0.6);
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 18px -8px rgb(0 0 0 / 0.5);
   --shadow-pop: 0 2px 6px rgb(0 0 0 / 0.5), 0 22px 48px -14px rgb(0 0 0 / 0.7);

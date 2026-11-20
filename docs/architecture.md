@@ -1,4 +1,4 @@
-# Techomato Orbit — architecture (Plans 1-2: service engine, ports, projects, Windows services, shell)
+# Techomato Orbit — architecture
 
 Tauri 2 shell. The Rust side owns everything that touches the machine; the React side only
 renders and sends commands. Windows 10/11 x64.
@@ -95,39 +95,65 @@ to `<logs>/<id>.raw`, which Orbit tails into the normal log pipeline while it ru
 
 ## Plan 2 additions
 
-| Area                  | Where                                                                                                | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ports                 | `windows/net.rs`, `engine/ports.rs`, `commands/ports.rs`, `features/ports`                           | Reads TCP/UDP endpoints (IP Helper), joins them to Orbit services by PID tree, flags a foreign listener on a service's port as a conflict. Ending a process re-reads identity, refuses Orbit itself and core Windows processes, asks a native confirm, then `taskkill` close followed by `/T /F`. The page polls every 2 s while visible; the watch list lives in the browser profile.                                                                                                                                                 |
-| Projects              | `models/project.rs`, `repo/projects.rs`, `engine/deps.rs`, `engine/projects.rs`, `features/projects` | A project groups services. `service_deps` edges (cycle-checked, cascade-deleted) give a start order; stop runs in reverse. Per-edge `abort` or `continue` on failure. Progress is streamed as `project://progress`.                                                                                                                                                                                                                                                                                                                    |
-| Windows services      | `windows/scm.rs`, `commands/winservices.rs`, `features/winservices`                                  | Lists SCM services (opened with query rights only). A service is **protected** if it is a driver, in the core list, or its image is under `%SystemRoot%`; protected rows get no controls. "Developer" services match name patterns or the user's pins.                                                                                                                                                                                                                                                                                 |
-| Elevated helper       | `elevated.rs`, `windows/elevate.rs`, `main.rs`                                                       | Start/stop/restart of a Windows service needs admin. Orbit relaunches itself with `runas` and `--elevated-op <base64 json> --result <file>`. The request is a closed enum (`ServiceStart/Stop/Restart`, `EndProcess`), max 1 KiB, `deny_unknown_fields`; the helper decodes, re-validates (name shape, exists, not protected, identity) and only then acts. There is no "run this command" operation. The caller creates the result file; the helper writes only to an existing file. One UAC prompt per action; cancelling is silent. |
-| Notifications         | `engine/notify.rs`, `repo/notifications.rs`, `commands/notifications.rs`                             | Status changes become notices (crash, start failed, health failed, auto-restart, optional started/stopped) filtered by `Prefs.notify`, shown as native toasts and kept as history (last 500). A watched-port conflict is raised by the Ports page.                                                                                                                                                                                                                                                                                     |
-| Settings              | `models/prefs.rs`, `repo/settings.rs`, `features/settings`                                           | One JSON document (`prefs`) in the `settings` table: module toggles, notification toggles, refresh policy, start-with-Windows. Autostart goes through the autostart plugin and launches with `--background`, which keeps the window in the tray.                                                                                                                                                                                                                                                                                       |
-| Shortcuts and palette | `shortcuts.rs`, `shared/palette`                                                                     | `Ctrl+K` opens an in-app palette (`rankCommands`: prefix, then contains, then subsequence; title beats keyword). Global `Win+Alt+O` open, `Win+Alt+S` / `Win+Alt+X` (not Ctrl+Alt, which is AltGr and would swallow typed characters) start / stop the last project started from Orbit. A shortcut another program owns is not registered and is reported in Settings.                                                                                                                                                                 |
+| Area                  | Where                                                                                                | What it does                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ports                 | `windows/net.rs`, `engine/ports.rs`, `commands/ports.rs`, `features/ports`                           | Reads TCP/UDP endpoints (IP Helper) and joins them to Orbit services by PID tree. The Services page shows the port a running service listens on, and a service's configured port is checked before start. There is no page for it and no way to end a process.                                                                                                         |
+| Projects              | `models/project.rs`, `repo/projects.rs`, `engine/deps.rs`, `engine/projects.rs`, `features/projects` | A project groups services. `service_deps` edges (cycle-checked, cascade-deleted) give a start order; stop runs in reverse. Per-edge `abort` or `continue` on failure. Progress is streamed as `project://progress`.                                                                                                                                                    |
+| Notifications         | `engine/notify.rs`, `repo/notifications.rs`, `commands/notifications.rs`                             | Status changes become notices (crash, start failed, health failed, auto-restart, optional started/stopped) filtered by `Prefs.notify`, shown as native toasts and kept as history (last 500).                                                                                                                                                                          |
+| Settings              | `models/prefs.rs`, `repo/settings.rs`, `features/settings`                                           | One JSON document (`prefs`) in the `settings` table: Projects and Doctor toggles, notification toggles, refresh policy, start-with-Windows. Autostart goes through the autostart plugin and launches with `--background`, which keeps the window in the tray.                                                                                                          |
+| Shortcuts and palette | `shortcuts.rs`, `shared/palette`                                                                     | `Ctrl+K` opens an in-app palette (`rankCommands`: prefix, then contains, then subsequence; title beats keyword). Global `Win+Alt+O` open, `Win+Alt+S` / `Win+Alt+X` (not Ctrl+Alt, which is AltGr and would swallow typed characters) start / stop the last project started from Orbit. A shortcut another program owns is not registered and is reported in Settings. |
 
 Migration `0002` adds `projects`, `service_deps` and `notifications`.
 
 Events added: `project://progress` (`{projectId, serviceId, step}`).
 
-**Not covered by automated tests:** the real UAC prompt and elevated service control, native toast
+**Not covered by automated tests:** native toast
 display, tray menu clicks, and pressing the global shortcuts (registration is checked).
 
-## Plan 3 additions: Packages
+## Databases and service templates
 
-`src-tauri/src/pm/` is the package-manager layer: `parse.rs` turns captured output into `Package`
-rows (winget fixed-width table cut at the header offsets, Chocolatey `--limit-output`, Scoop JSON and
-tables), `args.rs` validates ids and search text and builds argument arrays, `run.rs` finds the
-manager and runs it with a timeout while streaming lines. `commands/packages.rs` exposes
-`pm_managers`, `pm_installed`, `pm_outdated`, `pm_search`, `pm_install`, `pm_upgrade`,
-`pm_upgrade_all`, `pm_uninstall`; changes emit `pm://output` and one change per manager runs at a time.
+**One-click databases** (`src-tauri/src/engines/`, `commands/databases.rs`, `features/databases`).
+`catalog.rs` pins four engines (PostgreSQL, MariaDB, Redis, MongoDB) by URL, SHA-256 and size.
+Redis is a community Windows port (version 5); the others are the official builds. `install.rs`
+downloads with a streaming hash, refuses a file that does not match (nothing is unpacked), unpacks
+into a `.tmp` folder and renames it into `<local app data>\Techomato Orbit\engines\<id>-<version>\`.
+`instance.rs` makes `...\instances\<name>-<id8>\`, runs the engine's init program when it has one,
+picks a free port near the usual one, and saves an **ordinary service** bound to 127.0.0.1 (restart
+never, TCP health check). From then on the Supervisor treats it like any other service. The
+databases have no password, so they are for development only.
 
-Rules: nothing is ever joined into a shell string; ids allow only letters, digits and `. _ - + @ / :`
-(so Add/Remove Programs and Store entries are listed but not manageable); uninstall and upgrade-all
-confirm natively in Rust; Chocolatey changes are not elevated by Orbit and report that they need an
-administrator. Scoop runs through Windows PowerShell with `-File` so arguments stay literal.
+Deleting a database service also deletes its folder, but only when its working directory is
+exactly a direct child of `instances\` and no other service uses the same folder (`owned_dir`); the
+confirm names the folder. Duplicating a project does not copy such a database. Engines are
+shared and are not deleted. Uninstalling Orbit does not remove this folder.
+`db_create` emits `engine://progress` (`{engine, phase, done, total}`); `db_cancel` stops a download.
+`.github/workflows/databases.yml` re-runs the real download-start-stop test weekly.
 
-The Terminal module planned for Plan 3 was dropped by the user; the `terminal` module preference
-still exists but has no screen.
+**Already-running databases** (`engine/detect.rs`, `commands/detect.rs`, `windows/scm.rs`,
+`engine/winsvc.rs`). `service_detect` takes the port list (`commands::ports::current_rows`) and keeps
+TCP listeners owned by `redis-server`, `postgres`, `mysqld`, `mariadbd` or `mongod` that no Orbit
+service owns, then turns each into an ordinary service (the Services page asks every 10 s). It
+reuses a stopped service with the same program and port instead of making a second one. Two kinds:
+
+- Started by hand: `Supervisor::adopt` shows it as running and watches it like a program re-attached
+  after an Orbit restart. Stop ends it with `taskkill`; its environment and old output are not known.
+- Run by a Windows service (the program, or something above it, is a service in the Service Control
+  Manager; `svchost.exe` hosts never count): the service's own command becomes the spec. Because
+  `scm::find` matches a spec to a service by the exact program and arguments, `Supervisor::start`
+  and `stop` send those to Windows (`sc.exe start|stop <name>` run through `ShellExecuteExW`
+  "runas", one UAC prompt each; the name must have come from the service list and is checked
+  again). `engine/winsvc.rs` reads the state every 3 s and calls `Supervisor::set_external`, so the
+  card follows `services.msc` too. Declining the prompt changes nothing.
+
+A program another account runs, whose command Orbit cannot read, is listed but not added. Adopted
+services keep running when Orbit quits. Not covered by tests: the UAC-elevated `sc.exe` call.
+
+**Service templates** (`features/services/components/ServiceForm/serviceTemplates.ts`) only fill the
+Add service form (Django, Flask, FastAPI, React with Vite, Express, Node, Celery, Docker). Nothing is
+installed or run by choosing one.
+
+Removed since Plan 3: the Packages, Windows services, Ports and Terminal screens and the elevated
+helper. `pm/run.rs` stays because Doctor uses it to run read-only commands with a timeout.
 
 ## Plan 4 additions: Doctor, updates, installer
 
@@ -148,15 +174,22 @@ stopped as Quit does, then the installer runs. Automatic check at launch is a pr
 (`autoUpdateCheck`, off by default) and only notifies. See `docs/releasing.md`.
 
 **Installer** (`tauri.conf.json`). NSIS with a per-user or per-machine choice, an MSI, and an
-embedded WebView2 bootstrapper. The elevated helper validates its own arguments and result path, so
-a per-machine install needs no change to it.
+embedded WebView2 bootstrapper.
 
-The VSCode cleanup and Claude Chats modules from the original design were dropped by the user; their
-module preferences (`vscode`, `claudeChats`, `terminal`) still exist but have no screens.
+The VSCode cleanup, Claude Chats and Terminal modules from the original design were dropped by the user.
 
 ## Known gaps (tracked for later plans)
 
 - `https://` health URLs are only checked as a TCP connect (no TLS stack).
 - Keep-running services lose the stdout/stderr distinction, and their raw file is only truncated at
   each start, not rotated while running.
-- `allow_multiple` is stored but the supervisor runs one process per service.
+
+## Brand rules
+
+- Look: paper background, ink text, tomato accent, Bricolage Grotesque headings, Instrument Sans body,
+  pill buttons, light and dark. Colours come only from `src/styles/theme.css`.
+- Light tomato is exactly `#C8381F`. Dark tomato is `#c63f27` on purpose: it keeps white button text
+  at 5.1:1. Do not "correct" it to `#C8381F`; the contrast notes in `theme.css` give the numbers.
+- Cards use a 16 px corner (`--radius-card`). The first plan said 22 px; 16 px is what shipped.
+- Names: "Techomato Orbit" for the window title, tray, installer and README. "Orbit" alone is fine in
+  running text inside the app, and the sidebar mark is "Orbit."

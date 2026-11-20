@@ -1,14 +1,14 @@
 //! Tauri command handlers, one file per domain.
 
+pub mod databases;
+pub mod detect;
 pub mod doctor;
 pub mod logs;
 pub mod notifications;
-pub mod packages;
 pub mod ports;
 pub mod projects;
 pub mod services;
 pub mod updates;
-pub mod winservices;
 
 use crate::error::{AppError, AppResult, ErrorKind};
 use tauri::AppHandle;
@@ -56,4 +56,13 @@ pub async fn pick_path(app: AppHandle, folder: bool) -> AppResult<Option<String>
                 .map_err(|e| AppError::new(ErrorKind::Io, e.to_string()))
         })
         .transpose()
+}
+
+/// Where the source lives; the About card opens it. A fixed address, so the page cannot ask the
+/// program to open anything else.
+const REPO_URL: &str = "https://github.com/KoushikMallik-developer/techomato-orbit";
+
+#[tauri::command]
+pub fn open_repo() -> AppResult<()> {
+    crate::windows::shell::open_url(REPO_URL)
 }

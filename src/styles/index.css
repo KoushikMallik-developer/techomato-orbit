@@ -46,6 +46,11 @@
   }
 }
 
+/* The one border weight used by buttons and fields. */
+@utility border-ui {
+  border-width: 1.5px;
+}
+
 @keyframes orbit-enter {
   from {
     opacity: 0;

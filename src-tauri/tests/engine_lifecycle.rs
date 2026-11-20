@@ -65,7 +65,6 @@ fn svc(h: &Harness, name: &str, args: &[&str], port: Option<u16>) -> ServiceSpec
         restart: RestartPolicy::Never,
         health: None,
         keep_running_on_quit: false,
-        allow_multiple: false,
         enabled: true,
     };
     repo::create(&h.db, h.secrets.as_ref(), &spec).unwrap()

@@ -104,7 +104,6 @@ fn create_run_stop_restart_reopen_and_everything_is_intact() {
             restart: RestartPolicy::Never,
             health: None,
             keep_running_on_quit: false,
-            allow_multiple: false,
             enabled: true,
         },
     )
