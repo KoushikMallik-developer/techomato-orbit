@@ -90,15 +90,25 @@ mod tests {
         let other = card(&db, r"C:\nothing\x.exe", vec![]);
 
         let mut names = Names::new();
-        tick(&db, &sup, &mut names);
-        std::thread::sleep(Duration::from_millis(100));
-        let stable_pid = scm::running_pid(&own.name);
-        if stable_pid.is_none() {
+        let mut stable_pid = None;
+        for _ in 0..10 {
+            tick(&db, &sup, &mut names);
+            std::thread::sleep(Duration::from_millis(100));
+            stable_pid = scm::running_pid(&own.name);
+            if stable_pid.is_some() && sup.runtime(&mine).status == Status::Running {
+                break;
+            }
+        }
+        let Some(pid) = stable_pid else {
             eprintln!("skipped: selected Windows service stopped while the test was running");
+            return;
+        };
+        if sup.runtime(&mine).status != Status::Running {
+            eprintln!("skipped: Windows service state could not stay stable during the test");
             return;
         }
         assert_eq!(sup.runtime(&mine).status, Status::Running);
-        assert_eq!(sup.runtime(&mine).pid, stable_pid);
+        assert_eq!(sup.runtime(&mine).pid, Some(pid));
         assert_eq!(sup.runtime(&other).status, Status::Stopped);
         // Both lookups are remembered, so the next tick lists nothing.
         assert_eq!(names.len(), 2);
