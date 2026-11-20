@@ -1,63 +1,137 @@
+<div align="center">
+
 # Techomato Orbit
 
-A free Windows desktop app that puts your local dev machine in one window: the services you run,
-one-click databases, and your machine's health. It lives in the system tray and works offline,
-except for downloading a database or an update. Windows 10 or 11, 64-bit.
+<img src="assets/brand/orbit-icon.svg" width="128" alt="Techomato Orbit icon">
 
-Built with Tauri 2 (Rust) + React + TypeScript. Design: `docs/superpowers/specs/`. How it fits together: `docs/architecture.md`.
+**Your local development machine, organized in one window.**
 
-Inspired by the macOS app Nexus Console. No code or assets are shared with it.
+[![Windows](https://img.shields.io/badge/Platform-Windows-8B5CF6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/KoushikMallik-developer/techomato-orbit/releases)
+[![Latest Release](https://img.shields.io/github/v/release/KoushikMallik-developer/techomato-orbit?style=for-the-badge&color=06B6D4)](https://github.com/KoushikMallik-developer/techomato-orbit/releases/latest)
+[![License](https://img.shields.io/badge/License-Free-F59E0B?style=for-the-badge)](#license)
 
-## Install
+</div>
 
-Build the installers with `npm run release` (see `docs/releasing.md`). The setup `.exe` installs
-for you or for all users; the `.msi` is machine-wide.
+Techomato Orbit is a free Windows desktop app for managing local services, one-click databases,
+projects, logs, ports, and PC health. It runs in the system tray and works offline after setup,
+except when downloading a database or checking for updates.
 
-## Develop
+> **Windows 10 or 11 - 64-bit**
 
-Needs Node 22.12+, Rust (rustup, MSVC toolchain), and the Visual Studio C++ Build Tools.
+---
+
+## Download and install
+
+### Latest stable release - recommended
+
+Use the stable build for the most reliable experience.
+
+1. Open the **[Latest Stable Release](https://github.com/KoushikMallik-developer/techomato-orbit/releases/latest)** page.
+2. Under **Assets**, download `Techomato Orbit_<version>_x64-setup.exe`.
+3. Double-click the downloaded installer.
+4. Choose **Install for me only** or **Install for all users**.
+5. Launch **Techomato Orbit** from the Start menu.
+
+> **Windows SmartScreen:** Orbit currently has no paid Windows publisher certificate. If Windows
+> displays **Microsoft Defender SmartScreen protected your PC**, select **More info**, then
+> **Run anyway**.
+
+### Latest release version
+
+This option includes the newest published version, including a prerelease when one is published.
+
+1. Open the **[All Releases](https://github.com/KoushikMallik-developer/techomato-orbit/releases)** page.
+2. Choose the newest release you want to use. A **Pre-release** label means it may be less stable.
+3. Open **Assets** and download `Techomato Orbit_<version>_x64-setup.exe`.
+4. Run the installer and follow the on-screen instructions.
+
+**MSI installer:** Organizations and managed PCs can use
+`Techomato Orbit_<version>_x64_en-US.msi`. It is machine-wide and may require administrator rights.
+
+### Upgrade an existing installation
+
+Open Orbit, go to **Settings > Updates**, and use **Check for updates**. Updates are signature
+verified and are installed only after you confirm.
+
+---
+
+## What you can do
+
+| | |
+| :--- | :--- |
+| **Services** | Start, stop, restart, monitor health, and view live logs for local services. |
+| **Databases** | Add PostgreSQL, MariaDB, Redis, or MongoDB with one click - no Docker required. |
+| **Projects** | Group services and start or stop dependencies in the correct order. |
+| **Ports** | See the actual port used by every running service. |
+| **Doctor** | Check drives, memory, caches, startup apps, power settings, WSL, Docker, and Ollama. |
+| **Tray mode** | Close the window while Orbit stays available from the system tray. |
+
+### Handy shortcuts
+
+- Press **Ctrl+K** to open the command palette.
+- Add global shortcuts from Settings.
+- Configure notifications and start Orbit with Windows.
+
+---
+
+## Databases and local data
+
+Orbit downloads databases once, verifies the download, and keeps the program and data under:
+
+```text
+%LOCALAPPDATA%\Techomato Orbit
+```
+
+Databases listen on this PC only and do not use passwords, so they are intended for development.
+Deleting a database service removes its data. Uninstalling Orbit does not remove database files;
+delete the folder above if you want to remove every database completely.
+
+Orbit also discovers compatible databases already running on Windows, including Redis,
+PostgreSQL, MySQL/MariaDB, and MongoDB.
+
+---
+
+## Build from source
+
+### Prerequisites
+
+- Node.js 22.12 or newer
+- Rust with rustup
+- Visual Studio C++ Build Tools
+- Windows 10 or 11, 64-bit
+
+### Development
 
 ```bash
 npm ci
-npm start          # tauri dev
-npm test           # vitest
+npm start
+```
+
+### Tests
+
+```bash
+npm test
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-## What works so far
+### Build the Windows installers
 
-Custom services you define: start, graceful stop, force stop, restart, restart policy, health
-checks, secret environment values in Windows Credential Manager, live logs, and a tray icon.
-Closing the window hides it to the tray; Quit Orbit stops services unless they are marked
-keep-running.
+```bash
+npm run release
+```
 
-Databases: add PostgreSQL, MariaDB, Redis or MongoDB with one click. Orbit downloads the program
-once (checked against a fixed checksum), keeps it and its data in
-`%LOCALAPPDATA%\Techomato Orbit`, and adds a service that listens on this PC only. No Docker. They
-have no password, so use them for development only. Redis is a community Windows port (version 5).
-Deleting the service deletes its data. Uninstalling Orbit does not, so delete that folder to remove
-every database.
+Installers are created under `src-tauri/target/release/bundle/`. The setup and release process is
+documented in [docs/releasing.md](docs/releasing.md).
 
-Already-running databases: any Redis, PostgreSQL, MySQL/MariaDB or MongoDB that is already running
-(started by hand, or installed as a Windows service) is added to the Services page by itself, as
-an ordinary card with Start, Stop, Force stop, Restart, Logs, Edit and Delete. They keep running
-when Orbit quits. One you started by hand is stopped by ending it at once. One that runs as a
-Windows service is started and stopped through Windows, which asks for administrator rights (a UAC
-prompt) each time. A database another account runs that Orbit cannot inspect is only listed. Delete removes the card; it comes back the next time
-that database is found running.
+---
 
-Add service has templates (Django, Flask, FastAPI, React with Vite, Express, Node, Celery, Docker)
-that only fill in the form.
+## Project links
 
-Also: Projects (group services with dependencies; start in order, stop in reverse), desktop
-notifications with history, a Ctrl+K command palette, global shortcuts, and a Settings page
-(modules, notifications, start with Windows). The Services page shows the port each running service
-is actually listening on.
+- [Architecture](docs/architecture.md)
+- [Database schema](docs/database_schema.md)
+- [Design specification](docs/superpowers/specs/2026-11-19-techomato-orbit-design.md)
+- [Release guide](docs/releasing.md)
 
-Doctor: a read-only health check of this PC (drives, caches, memory, startup programs, power plan,
-pending restart, WSL, Docker, Ollama). Every finding is tagged Speed, Storage or Info, and clearing
-disk space is never presented as a speed-up. Fixes (clear a cache, disable a startup program, switch
-power plan) run only when you press a button and confirm.
+## License
 
-Updates: Settings can check for a new version on request or at launch. Updates are signed and
-install only when you press Install.
+Techomato Orbit is free to use.
