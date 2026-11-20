@@ -1,9 +1,8 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
-export type ModuleKey =
-  'services' | 'projects' | 'ports' | 'packages' | 'doctor' | 'logs' | 'settings';
+export type ModuleKey = 'services' | 'projects' | 'doctor' | 'logs' | 'settings';
 export type ThemePref = 'light' | 'dark';
-export type Toast = { id: number; text: string };
+export type Toast = { id: number; text: string; tone: 'error' | 'info' };
 
 type UiState = {
   activeModule: ModuleKey;
@@ -54,7 +53,9 @@ export const uiSlice = createSlice({
       reducer(state, a: PayloadAction<Toast>) {
         state.toasts = [...state.toasts.slice(-3), a.payload];
       },
-      prepare: (text: string) => ({ payload: { id: nextToastId++, text } }),
+      prepare: (text: string, tone: Toast['tone'] = 'error') => ({
+        payload: { id: nextToastId++, text, tone },
+      }),
     },
     dismissToast(state, a: PayloadAction<number>) {
       state.toasts = state.toasts.filter((t) => t.id !== a.payload);

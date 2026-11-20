@@ -59,7 +59,7 @@ export function ProjectCard(p: Props) {
         {p.project.icon && <span aria-hidden>{p.project.icon}</span>}
         <h2 className="min-w-0 truncate text-lg font-bold">{p.project.name}</h2>
         {p.project.archived && <Pill>Archived</Pill>}
-        <Pill on={roll === 'running'}>{LABEL[roll]}</Pill>
+        <Pill tone={roll === 'running' ? 'running' : 'neutral'}>{LABEL[roll]}</Pill>
         <span className="text-sm text-fg-muted">
           {p.members.length} {p.members.length === 1 ? 'service' : 'services'}
         </span>
@@ -118,16 +118,25 @@ export function ProjectCard(p: Props) {
           Stop selected
         </Button>
         <span className="ml-auto flex gap-2">
-          <Button size="sm" onClick={p.onEdit}>
+          <Button size="sm" aria-label={`Edit ${p.project.name}`} onClick={p.onEdit}>
             Edit
           </Button>
-          <Button size="sm" onClick={p.onDuplicate}>
+          <Button size="sm" aria-label={`Duplicate ${p.project.name}`} onClick={p.onDuplicate}>
             Duplicate
           </Button>
-          <Button size="sm" onClick={p.onArchive}>
+          <Button
+            size="sm"
+            aria-label={`${p.project.archived ? 'Unarchive' : 'Archive'} ${p.project.name}`}
+            onClick={p.onArchive}
+          >
             {p.project.archived ? 'Unarchive' : 'Archive'}
           </Button>
-          <Button size="sm" variant="danger" onClick={p.onDelete}>
+          <Button
+            size="sm"
+            variant="danger"
+            aria-label={`Delete ${p.project.name}`}
+            onClick={p.onDelete}
+          >
             Delete
           </Button>
         </span>

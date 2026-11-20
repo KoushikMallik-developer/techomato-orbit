@@ -49,7 +49,10 @@ export function Palette() {
     };
   }, []);
   useEffect(() => {
-    if (open) input.current?.focus();
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    input.current?.focus();
+    return () => opener?.focus(); // hand focus back to what opened the palette
   }, [open]);
 
   const items = useMemo(() => {
@@ -61,8 +64,6 @@ export function Palette() {
     });
     const list: Item[] = [go('services', 'Go to Services'), go('logs', 'Go to Logs')];
     if (prefs?.modules.projects !== false) list.push(go('projects', 'Go to Projects'));
-    if (prefs?.modules.ports !== false) list.push(go('ports', 'Go to Ports'));
-    if (prefs?.modules.packages !== false) list.push(go('packages', 'Go to Packages'));
     if (prefs?.modules.doctor !== false) list.push(go('doctor', 'Go to Doctor'));
     list.push(go('settings', 'Open settings'), {
       id: 'theme',
@@ -112,7 +113,7 @@ export function Palette() {
             title: `Check port ${n}`,
             run: () =>
               void ipc(CMD.portCheck, { port: n }, z.boolean()).then((busy) =>
-                dispatch(pushToast(busy ? `Port ${n} is in use.` : `Port ${n} is free.`)),
+                dispatch(pushToast(busy ? `Port ${n} is in use.` : `Port ${n} is free.`, 'info')),
               ),
           },
         ]
@@ -132,11 +133,17 @@ export function Palette() {
     >
       <div
         role="dialog"
+        aria-modal="true"
         aria-label="Command palette"
         className="w-full max-w-xl overflow-hidden rounded-card border border-border bg-paper shadow-pop"
       >
         <input
           ref={input}
+          role="combobox"
+          aria-expanded={shown.length > 0}
+          aria-controls="palette-list"
+          aria-activedescendant={shown[cursor] ? `palette-opt-${cursor}` : undefined}
+          aria-autocomplete="list"
           aria-label="Type a command"
           placeholder="Type a command, service, project or port number"
           className="w-full border-b border-border bg-paper px-5 py-3 text-base outline-none"
@@ -153,13 +160,18 @@ export function Palette() {
               e.preventDefault();
               setCursor((c) => Math.max(c - 1, 0));
             } else if (e.key === 'Enter') choose(shown[cursor]);
+            else if (e.key === 'Tab') e.preventDefault(); // the input is the only stop: keep focus inside
           }}
         />
-        <ul role="listbox" className="max-h-80 overflow-auto py-1">
+        <ul id="palette-list" role="listbox" className="max-h-80 overflow-auto py-1">
           {shown.length === 0 && <li className="px-5 py-3 text-sm text-fg-muted">No match.</li>}
           {shown.map((item, i) => (
             <li
               key={item.id}
+              id={`palette-opt-${i}`}
+              ref={(el) => {
+                if (i === cursor) el?.scrollIntoView({ block: 'nearest' });
+              }}
               role="option"
               aria-selected={i === cursor}
               onMouseEnter={() => setCursor(i)}

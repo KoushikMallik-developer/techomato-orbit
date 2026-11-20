@@ -14,19 +14,16 @@ const DOTS: Record<Tone, string> = {
   danger: 'bg-danger-dot',
 };
 
-/** `on` is kept for existing callers: it means the running tone. */
 export function Pill({
   children,
-  on = false,
   tone,
   dot = false,
 }: {
   children: ReactNode;
-  on?: boolean;
   tone?: Tone;
   dot?: boolean;
 }) {
-  const t: Tone = tone ?? (on ? 'running' : 'neutral');
+  const t: Tone = tone ?? 'neutral';
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${TONES[t]}`}

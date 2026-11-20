@@ -1,3 +1,4 @@
+use crate::commands::databases::DataRoot;
 use crate::db::Db;
 use crate::engine::projects::{self, Progress, ProjectRunReport};
 use crate::engine::supervisor::Supervisor;
@@ -47,9 +48,10 @@ pub async fn project_delete(app: AppHandle, db: State<'_, Arc<Db>>, id: String) 
 pub async fn project_duplicate(
     db: State<'_, Arc<Db>>,
     secrets: Secrets<'_>,
+    root: State<'_, DataRoot>,
     id: String,
 ) -> AppResult<Project> {
-    repo::duplicate(&db, secrets.inner().as_ref(), &id)
+    repo::duplicate(&db, secrets.inner().as_ref(), &root.0, &id)
 }
 
 #[tauri::command]

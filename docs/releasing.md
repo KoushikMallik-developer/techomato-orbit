@@ -10,11 +10,6 @@
 - `bundle/msi/Techomato Orbit_<version>_x64_en-US.msi`, a machine-wide installer for IT use.
 - A `.sig` file next to each installer. These are the update signatures.
 
-Windows service control and ending protected processes ask for administrator permission (a UAC
-prompt) in both install types. Known limit: a per-user install lives in a folder that any program
-of that user can overwrite, so such a program could take over the prompt. The all-users install
-(Program Files) does not have this weakness.
-
 The setup includes the WebView2 bootstrapper, so Windows 10 machines without WebView2 get it
 installed automatically.
 

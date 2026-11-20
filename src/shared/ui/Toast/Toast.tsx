@@ -1,20 +1,32 @@
-import { CircleAlert, X } from 'lucide-react';
-import { useEffect } from 'react';
+import { CircleAlert, Info, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { dismissToast } from '@/app/uiSlice';
 import { useAppDispatch, useAppSelector } from '@/app/store';
 
-function ToastItem({ id, text }: { id: number; text: string }) {
+function ToastItem({ id, text, tone }: { id: number; text: string; tone: 'error' | 'info' }) {
+  const error = tone === 'error';
   const dispatch = useAppDispatch();
+  // Hovering or focusing a toast pauses its timer so the text can be read and copied.
+  const [paused, setPaused] = useState(false);
   useEffect(() => {
+    if (paused) return;
     const t = setTimeout(() => dispatch(dismissToast(id)), 8000);
     return () => clearTimeout(t);
-  }, [dispatch, id]);
+  }, [dispatch, id, paused]);
   return (
     <div
-      role="alert"
-      className="page-enter flex max-w-md items-start gap-3 rounded-card border border-danger/60 bg-paper px-4 py-3 text-sm shadow-pop"
+      role={error ? 'alert' : 'status'}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+      className={`page-enter flex max-w-md items-start gap-3 rounded-card border ${error ? 'border-danger/60' : 'border-border-strong'} bg-paper px-4 py-3 text-sm shadow-pop`}
     >
-      <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-danger" />
+      {error ? (
+        <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-danger" />
+      ) : (
+        <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-fg-subtle" />
+      )}
       <span className="min-w-0 flex-1 break-words">{text}</span>
       <button
         type="button"

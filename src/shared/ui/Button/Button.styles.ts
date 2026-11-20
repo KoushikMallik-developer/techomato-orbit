@@ -1,5 +1,5 @@
 export const buttonVariants = {
-  primary: 'bg-accent text-accent-fg border-accent hover:brightness-95',
+  primary: 'bg-accent text-accent-fg border-accent hover:border-accent-hover hover:bg-accent-hover',
   ghost: 'bg-transparent text-fg border-fg/70 hover:bg-raised',
   danger: 'bg-transparent text-danger border-danger hover:bg-danger-soft',
 } as const;

@@ -1,9 +1,7 @@
 import {
   FolderKanban,
   Moon,
-  Network,
   Stethoscope,
-  Package,
   ScrollText,
   Search,
   ServerCog,
@@ -20,13 +18,11 @@ type Item = {
   key: ModuleKey;
   label: string;
   icon: LucideIcon;
-  pref?: 'projects' | 'ports' | 'packages' | 'doctor';
+  pref?: 'projects' | 'doctor';
 };
 const RUN: Item[] = [
   { key: 'services', label: 'Services', icon: ServerCog },
   { key: 'projects', label: 'Projects', icon: FolderKanban, pref: 'projects' },
-  { key: 'ports', label: 'Ports', icon: Network, pref: 'ports' },
-  { key: 'packages', label: 'Packages', icon: Package, pref: 'packages' },
   { key: 'doctor', label: 'Doctor', icon: Stethoscope, pref: 'doctor' },
   { key: 'logs', label: 'Logs', icon: ScrollText },
 ];
@@ -42,17 +38,15 @@ function NavButton(props: { item: Item; active: boolean; badge?: number; onClick
       aria-current={active ? 'page' : undefined}
       onClick={props.onClick}
       className={`group flex items-center gap-3 rounded-full px-3.5 py-2 text-left text-sm font-medium transition-colors ${
-        active ? 'bg-accent-soft text-accent' : 'text-fg-muted hover:bg-raised hover:text-fg'
+        active ? 'bg-accent-soft text-accent-text' : 'text-fg-muted hover:bg-raised hover:text-fg'
       }`}
     >
-      <Icon aria-hidden className="size-[18px] shrink-0" strokeWidth={active ? 2.25 : 1.75} />
+      <Icon aria-hidden className="size-4.5 shrink-0" strokeWidth={active ? 2.25 : 1.75} />
       <span className="flex-1">{item.label}</span>
       {badge ? (
-        <span
-          aria-label={`${badge} running`}
-          className="rounded-full bg-running-soft px-2 text-xs font-semibold text-running"
-        >
+        <span className="rounded-full bg-running-soft px-2 text-xs font-semibold text-running">
           {badge}
+          <span className="sr-only"> running</span>
         </span>
       ) : null}
     </button>
@@ -75,16 +69,19 @@ export function Sidebar() {
       className="flex w-60 shrink-0 flex-col gap-1 border-r border-border bg-paper px-3 py-4"
     >
       <div className="mb-3 px-3.5 font-display text-xl font-extrabold tracking-tight">
-        Orbit<span className="text-accent">.</span>
+        Orbit
+        <span aria-hidden className="text-accent-text">
+          .
+        </span>
       </div>
       <button
         type="button"
         onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))}
-        className="mb-3 flex items-center gap-2 rounded-full border-[1.5px] border-border bg-canvas px-3.5 py-1.5 text-sm text-fg-subtle transition hover:border-border-strong"
+        className="mb-3 flex items-center gap-2 rounded-full border-ui border-border bg-canvas px-3.5 py-1.5 text-sm text-fg-subtle transition hover:border-border-strong"
       >
         <Search aria-hidden className="size-4" />
         <span className="flex-1 whitespace-nowrap text-left">Search</span>
-        <kbd className="rounded-md border border-border bg-paper px-1.5 font-mono text-[11px]">
+        <kbd className="rounded-md border border-border bg-paper px-1.5 font-mono text-xs">
           Ctrl K
         </kbd>
       </button>
@@ -113,9 +110,9 @@ export function Sidebar() {
           className="grid size-9 place-items-center rounded-full text-fg-muted transition hover:bg-raised hover:text-fg"
         >
           {theme === 'dark' ? (
-            <Sun aria-hidden className="size-[18px]" />
+            <Sun aria-hidden className="size-4.5" />
           ) : (
-            <Moon aria-hidden className="size-[18px]" />
+            <Moon aria-hidden className="size-4.5" />
           )}
         </button>
       </div>

@@ -3,7 +3,7 @@
 //! order, then the data directory reopened with everything intact. Run with `--ignored`.
 
 use orbit_lib::db;
-use orbit_lib::engine::ports::{annotate, end_process};
+use orbit_lib::engine::ports::annotate;
 use orbit_lib::engine::projects::{start_project, stop_project, Outcome, Progress};
 use orbit_lib::engine::supervisor::{ServiceRuntime, Supervisor};
 use orbit_lib::models::project::{Dep, OnFailure, Project};
@@ -11,10 +11,9 @@ use orbit_lib::models::service::*;
 use orbit_lib::repo::{projects, services, settings};
 use orbit_lib::secrets::{InMemorySecretStore, SecretStore};
 use orbit_lib::windows::net::list_endpoints;
-use orbit_lib::windows::procs::{children_of, identify, is_alive};
+use orbit_lib::windows::procs::children_of;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 const SVC: &str = env!("CARGO_BIN_EXE_orbit-testsvc");
 
@@ -44,7 +43,6 @@ fn spec(name: &str, port: u16, project: &str) -> ServiceSpec {
         restart: RestartPolicy::Never,
         health: None,
         keep_running_on_quit: false,
-        allow_multiple: false,
         enabled: true,
     }
 }
@@ -150,19 +148,6 @@ fn plan_two_end_to_end() {
         assert_eq!(owner.project_id.as_deref(), Some(project.id.as_str()));
         assert!(row.conflicts_with.is_none());
     }
-
-    // End one port holder through the same path the Ports page uses.
-    let web_row = rows
-        .iter()
-        .find(|r| r.service_id.as_deref() == Some(web_id.as_str()))
-        .unwrap();
-    let target = identify(web_row.endpoint.pid).expect("web is alive");
-    end_process(target, true).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while is_alive(&target) && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    assert!(!is_alive(&target));
 
     // Stop: reverse order of the services that were still up.
     steps.lock().unwrap().clear();

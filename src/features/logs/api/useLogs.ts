@@ -29,10 +29,12 @@ export function useLogBuffer(serviceId: string | null) {
     setLines([]);
     if (!serviceId) return;
     let stale = false;
-    void ipc(CMD.logRecent, { serviceId, n: MAX_LINES }, z.array(LineSchema)).then((recent) => {
-      // Lines that arrived while loading are kept after the loaded ones.
-      if (!stale) setLines((cur) => [...recent, ...cur].slice(-MAX_LINES));
-    });
+    void ipc(CMD.logRecent, { serviceId, n: MAX_LINES }, z.array(LineSchema))
+      .then((recent) => {
+        // Lines that arrived while loading are kept after the loaded ones.
+        if (!stale) setLines((cur) => [...recent, ...cur].slice(-MAX_LINES));
+      })
+      .catch(() => undefined); // the service was deleted: nothing to show
     return () => {
       stale = true;
     };

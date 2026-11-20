@@ -32,7 +32,10 @@ export function PageHeader({ title, summary, actions, onRefresh, refreshing }: P
       <div className="ml-auto flex items-center gap-2">
         {actions}
         <Button aria-label="Refresh data" disabled={spinning} onClick={refresh}>
-          <RefreshCw aria-hidden className={`size-4 ${spinning ? 'animate-spin' : ''}`} />
+          <RefreshCw
+            aria-hidden
+            className={`size-4 ${spinning ? 'motion-safe:animate-spin' : ''}`}
+          />
           Refresh
         </Button>
       </div>

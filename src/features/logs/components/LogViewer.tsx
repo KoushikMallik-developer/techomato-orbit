@@ -35,6 +35,7 @@ export function LogViewer({ lines, follow }: { lines: LogLine[]; follow: boolean
     <div
       ref={box}
       role="log"
+      aria-label="Log output"
       aria-live="off"
       tabIndex={0}
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
@@ -50,6 +51,7 @@ export function LogViewer({ lines, follow }: { lines: LogLine[]; follow: boolean
             }`}
           >
             <span className="shrink-0 text-fg-subtle">{time(l.tsMs)}</span>
+            {l.stream === 'stderr' && <span className="sr-only">error: </span>}
             <span className="truncate">{l.text}</span>
           </div>
         ))}

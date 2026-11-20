@@ -1,39 +1,27 @@
+import { useQuery } from '@tanstack/react-query';
+import { getVersion } from '@tauri-apps/api/app';
 import { Card } from '@/shared/ui/Card';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useUpdates } from '../api/useUpdates';
+import { CMD } from '@/shared/ipc/commands';
+import { ipcVoid } from '@/shared/ipc/invoke';
 import { Button } from '@/shared/ui/Button';
+import { Check } from '@/shared/ui/Field';
 import { useAutostart, usePrefs, useSetPrefs, useShortcuts, type Prefs } from '../api/usePrefs';
 
 const MODULES: { key: keyof Prefs['modules']; label: string }[] = [
   { key: 'projects', label: 'Projects' },
-  { key: 'ports', label: 'Ports' },
-  { key: 'packages', label: 'Packages' },
   { key: 'doctor', label: 'Doctor' },
-  { key: 'winservices', label: 'Windows services' },
 ];
 
 const EVENTS: { key: keyof Prefs['notify']; label: string }[] = [
   { key: 'crashed', label: 'A service crashes' },
   { key: 'startFailed', label: 'A service fails to start' },
   { key: 'healthFailed', label: 'A health check fails' },
-  { key: 'portConflict', label: 'A watched port is taken' },
   { key: 'autoRestart', label: 'A service is restarted automatically' },
   { key: 'started', label: 'A service starts' },
   { key: 'stopped', label: 'A service stops' },
 ];
-
-function Check(props: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex items-center gap-3 py-1 text-sm">
-      <input
-        type="checkbox"
-        checked={props.checked}
-        onChange={(e) => props.onChange(e.target.checked)}
-      />
-      {props.label}
-    </label>
-  );
-}
 
 export function SettingsPage() {
   const prefs = usePrefs();
@@ -41,8 +29,20 @@ export function SettingsPage() {
   const shortcuts = useShortcuts();
   const autostart = useAutostart();
   const updates = useUpdates();
+  const version = useQuery({ queryKey: ['appVersion'], queryFn: getVersion, staleTime: Infinity });
   const p = prefs.data;
-  if (!p) return <PageHeader title="Settings" />;
+  if (!p) {
+    return (
+      <div className="flex max-w-2xl flex-col gap-4">
+        <PageHeader title="Settings" onRefresh={() => void prefs.refetch()} />
+        {prefs.isError && (
+          <Card role="alert" className="text-danger">
+            Could not load settings: {prefs.error.message}
+          </Card>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
@@ -104,6 +104,14 @@ export function SettingsPage() {
             </>
           )}
         </div>
+        {updates.install.isPending && updates.percent !== null && (
+          <progress
+            aria-label="Update download"
+            value={updates.percent}
+            max={100}
+            className="mt-2 h-2 w-full accent-accent"
+          />
+        )}
       </Card>
       <Card>
         <h2 className="mb-2 text-lg font-bold">Modules</h2>
@@ -148,6 +156,16 @@ export function SettingsPage() {
             </li>
           ))}
         </ul>
+      </Card>
+      <Card>
+        <h2 className="mb-2 text-lg font-bold">About</h2>
+        <p className="text-sm text-fg-muted">
+          Techomato Orbit{version.data ? ` ${version.data}` : ''}. Your local dev machine in one
+          window. Made by Techomato. Free software under the MIT licence.
+        </p>
+        <Button className="mt-3" size="sm" onClick={() => void ipcVoid(CMD.openRepo)}>
+          View source on GitHub
+        </Button>
       </Card>
     </div>
   );

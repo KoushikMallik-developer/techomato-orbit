@@ -56,6 +56,18 @@ pub fn note(db: &Db, service_id: Option<&str>, kind: &str, message: &str) {
     );
 }
 
+/// Drops history older than `keep_days`. Nothing shows it yet, so it must not grow forever.
+pub fn prune_history(db: &Db, keep_days: i64) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let _ = db.0.lock().unwrap().execute(
+        "DELETE FROM activity_history WHERE ts < ?1",
+        [now - keep_days * 86_400_000],
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,6 +95,29 @@ mod tests {
         assert_eq!(rows[0].id, b);
         clear(&db, &s.id).unwrap();
         assert!(list(&db).unwrap().is_empty());
+    }
+
+    #[test]
+    fn old_history_is_pruned_and_recent_history_kept() {
+        let db = open_in_memory().unwrap();
+        db.0.lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO activity_history (ts,kind,message) VALUES (1,'started','old')",
+                [],
+            )
+            .unwrap();
+        note(&db, None, "started", "new");
+        prune_history(&db, 30);
+        let left: Vec<String> = {
+            let conn = db.0.lock().unwrap();
+            let mut stmt = conn
+                .prepare("SELECT message FROM activity_history")
+                .unwrap();
+            let rows = stmt.query_map([], |r| r.get(0)).unwrap();
+            rows.map(Result::unwrap).collect()
+        };
+        assert_eq!(left, ["new"]);
     }
 
     #[test]

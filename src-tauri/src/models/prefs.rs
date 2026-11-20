@@ -5,20 +5,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ModulePrefs {
-    pub ports: bool,
-    pub winservices: bool,
     pub projects: bool,
-    pub packages: bool,
     pub doctor: bool,
 }
 
 impl Default for ModulePrefs {
     fn default() -> Self {
         Self {
-            ports: true,
-            winservices: true,
             projects: true,
-            packages: true,
             doctor: true,
         }
     }
@@ -32,7 +26,6 @@ pub struct NotifyPrefs {
     pub crashed: bool,
     pub start_failed: bool,
     pub health_failed: bool,
-    pub port_conflict: bool,
     pub auto_restart: bool,
 }
 
@@ -44,7 +37,6 @@ impl Default for NotifyPrefs {
             crashed: true,
             start_failed: true,
             health_failed: true,
-            port_conflict: true,
             auto_restart: true,
         }
     }

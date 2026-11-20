@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { FolderKanban } from 'lucide-react';
 import { Card } from '@/shared/ui/Card';
@@ -67,7 +67,8 @@ export function ProjectsPage() {
     );
   }
 
-  const all = projects.data ?? [];
+  const all = [...(projects.data ?? [])].sort((a, b) => Number(a.archived) - Number(b.archived));
+  const firstArchived = all.findIndex((p) => p.archived);
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
@@ -95,23 +96,27 @@ export function ProjectsPage() {
           hint="A project groups the services of one application, like a database, an API and a web app, so you can start them together in the right order."
         />
       )}
-      {all.map((p) => (
-        <ProjectCard
-          key={p.id}
-          project={p}
-          members={(services.data ?? []).filter((s) => s.projectId === p.id)}
-          runtimes={runtimes}
-          progress={progress}
-          busy={busy}
-          onStart={(selection) => run.start.mutate({ id: p.id, selection })}
-          onStop={() => run.stop.mutate({ id: p.id })}
-          onRestart={() => run.restart.mutate({ id: p.id })}
-          onStopSelected={(ids) => ids.forEach((id) => serviceActions.stop.mutate(id))}
-          onEdit={() => setEditing(p)}
-          onDuplicate={() => actions.duplicate.mutate(p.id)}
-          onArchive={() => actions.archive.mutate({ id: p.id, archived: !p.archived })}
-          onDelete={() => actions.remove.mutate(p.id)}
-        />
+      {all.map((p, i) => (
+        <Fragment key={p.id}>
+          {i === firstArchived && (
+            <h2 className="mt-2 text-sm font-semibold text-fg-muted">Archived</h2>
+          )}
+          <ProjectCard
+            project={p}
+            members={(services.data ?? []).filter((s) => s.projectId === p.id)}
+            runtimes={runtimes}
+            progress={progress}
+            busy={busy}
+            onStart={(selection) => run.start.mutate({ id: p.id, selection })}
+            onStop={() => run.stop.mutate({ id: p.id })}
+            onRestart={() => run.restart.mutate({ id: p.id })}
+            onStopSelected={(ids) => ids.forEach((id) => serviceActions.stop.mutate(id))}
+            onEdit={() => setEditing(p)}
+            onDuplicate={() => actions.duplicate.mutate(p.id)}
+            onArchive={() => actions.archive.mutate({ id: p.id, archived: !p.archived })}
+            onDelete={() => actions.remove.mutate(p.id)}
+          />
+        </Fragment>
       ))}
     </div>
   );

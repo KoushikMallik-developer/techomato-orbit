@@ -1,220 +1,34 @@
-//! Windows services (Service Control Manager): read-only listing and the "protected" rule.
-//! Nothing here opens a service with more than `SERVICE_QUERY_CONFIG`.
+//! Windows services (Service Control Manager), only as far as a database that runs as one needs:
+//! find the service that runs a command, read its state, and start or stop it. Reading needs no
+//! rights; starting and stopping asks Windows for administrator rights (one UAC prompt each).
 
 use crate::error::{AppError, AppResult, ErrorKind};
-use serde::Serialize;
-use std::time::{Duration, Instant};
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::ERROR_MORE_DATA;
+use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, ERROR_MORE_DATA, WAIT_OBJECT_0};
 use windows::Win32::System::Services::{
-    CloseServiceHandle, ControlService, EnumServicesStatusExW, OpenSCManagerW, OpenServiceW,
-    QueryServiceConfig2W, QueryServiceConfigW, QueryServiceStatus, StartServiceW,
-    ENUM_SERVICE_STATUS_PROCESSW, QUERY_SERVICE_CONFIGW, SC_ENUM_PROCESS_INFO, SC_HANDLE,
-    SC_MANAGER_ENUMERATE_SERVICE, SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONTROL_STOP,
-    SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS, SERVICE_START, SERVICE_STATE_ALL, SERVICE_STATUS,
-    SERVICE_STOP, SERVICE_WIN32,
+    CloseServiceHandle, EnumServicesStatusExW, OpenSCManagerW, OpenServiceW, QueryServiceConfigW,
+    QueryServiceStatusEx, ENUM_SERVICE_STATUS_PROCESSW, QUERY_SERVICE_CONFIGW,
+    SC_ENUM_PROCESS_INFO, SC_HANDLE, SC_MANAGER_ENUMERATE_SERVICE, SC_STATUS_PROCESS_INFO,
+    SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS, SERVICE_STATE_ALL, SERVICE_STATUS_PROCESS,
+    SERVICE_WIN32,
 };
+use windows::Win32::System::SystemInformation::GetSystemDirectoryW;
+use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE};
+use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ServiceState {
-    Stopped,
-    StartPending,
-    StopPending,
-    Running,
-    ContinuePending,
-    PausePending,
-    Paused,
-}
+const SERVICE_RUNNING: u32 = 4;
+/// `sc.exe` exit codes that already mean "the service is in the state you asked for".
+const ALREADY_RUNNING: u32 = 1056;
+const NOT_STARTED: u32 = 1062;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum StartType {
-    Auto,
-    AutoDelayed,
-    Manual,
-    Disabled,
-    Boot,
-    System,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WinService {
+/// One service as the manager lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Svc {
     pub name: String,
-    pub display_name: String,
-    pub state: ServiceState,
-    pub start_type: StartType,
-    pub service_type: String,
-    pub binary_path: Option<String>,
+    /// The command Windows runs, as configured.
+    pub command: String,
+    /// The process hosting it while it runs.
     pub pid: Option<u32>,
-    /// Part of Windows itself: Orbit offers no way to change these.
-    pub protected: bool,
-    /// Looks like development tooling (databases, Docker, web servers...) or is pinned.
-    pub developer: bool,
-}
-
-/// Names that are always protected, whatever their image path.
-pub const CORE_SERVICES: &[&str] = &[
-    "RpcSs",
-    "DcomLaunch",
-    "LSM",
-    "SamSs",
-    "EventLog",
-    "Winmgmt",
-    "BFE",
-    "mpssvc",
-    "CryptSvc",
-    "Dhcp",
-    "Dnscache",
-    "PlugPlay",
-    "Power",
-    "ProfSvc",
-    "SENS",
-    "Schedule",
-    "TrustedInstaller",
-    "WinDefend",
-];
-
-/// Development-tool service names. A trailing `*` matches any suffix; everything else is exact.
-pub const DEV_PATTERNS: &[&str] = &[
-    "postgres*",
-    "mysql*",
-    "mariadb*",
-    "mongo*",
-    "redis*",
-    "memurai*",
-    "mssql*",
-    "sqlserver*",
-    "docker*",
-    "com.docker*",
-    "wsl*",
-    "vmcompute",
-    "hns",
-    "rabbitmq*",
-    "elastic*",
-    "kafka*",
-    "nginx*",
-    "apache*",
-    "httpd*",
-    "iis*",
-    "w3svc",
-    "was",
-    "mosquitto*",
-    "neo4j*",
-    "couchdb*",
-    "minio*",
-    "consul*",
-    "vault*",
-];
-
-/// The executable part of an image path: the quoted part, or everything up to the first
-/// `.exe`/`.sys`/`.dll` (service paths often have unquoted spaces), else the first word.
-fn image_of(path: &str) -> String {
-    let p = path.trim();
-    if let Some(rest) = p.strip_prefix('"') {
-        return rest.split('"').next().unwrap_or(rest).to_string();
-    }
-    let lower = p.to_ascii_lowercase();
-    let end = [".exe", ".sys", ".dll"]
-        .iter()
-        .filter_map(|ext| lower.find(ext).map(|i| i + ext.len()))
-        .min();
-    match end {
-        Some(end) => p[..end].to_string(),
-        None => p.split_whitespace().next().unwrap_or("").to_string(),
-    }
-}
-
-/// Lower-case, backslash-separated, with `\??\`, `%SystemRoot%` and `\SystemRoot` expanded.
-fn normalise(image: &str, system_root: &str) -> String {
-    let root = system_root
-        .replace('/', "\\")
-        .trim_end_matches('\\')
-        .to_ascii_lowercase();
-    let mut s = image.replace('/', "\\").to_ascii_lowercase();
-    if let Some(rest) = s.strip_prefix("\\??\\") {
-        s = rest.to_string();
-    }
-    for token in ["%systemroot%", "%windir%", "\\systemroot"] {
-        if let Some(rest) = s.strip_prefix(token) {
-            s = format!("{root}{rest}");
-            break;
-        }
-    }
-    s
-}
-
-/// `service_type` is the raw `dwServiceType`; `system_root` is `%SystemRoot%` (`C:\Windows`).
-pub fn is_protected(
-    service_type: u32,
-    binary_path: Option<&str>,
-    name: &str,
-    system_root: &str,
-) -> bool {
-    const DRIVER_MASK: u32 = 0x1 | 0x2 | 0x4 | 0x8;
-    if service_type & DRIVER_MASK != 0 {
-        return true;
-    }
-    if CORE_SERVICES.iter().any(|c| c.eq_ignore_ascii_case(name)) {
-        return true;
-    }
-    // No readable image path (Windows refused the query): never offer controls.
-    let Some(path) = binary_path else {
-        return true;
-    };
-    let image = normalise(&image_of(path), system_root);
-    let root = system_root
-        .replace('/', "\\")
-        .trim_end_matches('\\')
-        .to_ascii_lowercase();
-    image.starts_with(&format!("{root}\\")) || image.starts_with("system32\\")
-}
-
-fn pattern_matches(pattern: &str, text: &str) -> bool {
-    let (pattern, text) = (pattern.to_lowercase(), text.to_lowercase());
-    match pattern.strip_suffix('*') {
-        Some(prefix) => text.starts_with(prefix),
-        None => text == pattern,
-    }
-}
-
-pub fn is_developer(name: &str, display: &str, patterns: &[&str], pins: &[String]) -> bool {
-    pins.iter().any(|p| p.eq_ignore_ascii_case(name))
-        || patterns
-            .iter()
-            .any(|p| pattern_matches(p, name) || pattern_matches(p, display))
-}
-
-fn state_from(raw: u32) -> ServiceState {
-    match raw {
-        2 => ServiceState::StartPending,
-        3 => ServiceState::StopPending,
-        4 => ServiceState::Running,
-        5 => ServiceState::ContinuePending,
-        6 => ServiceState::PausePending,
-        7 => ServiceState::Paused,
-        _ => ServiceState::Stopped,
-    }
-}
-
-fn type_label(raw: u32) -> String {
-    let base = if raw & 0x1 != 0 {
-        "Kernel driver"
-    } else if raw & 0x2 != 0 {
-        "File system driver"
-    } else if raw & 0x20 != 0 {
-        "Shared process"
-    } else if raw & 0x10 != 0 {
-        "Own process"
-    } else {
-        "Other"
-    };
-    if raw & 0x100 != 0 {
-        format!("{base} (interactive)")
-    } else {
-        base.to_string()
-    }
 }
 
 struct Handle(SC_HANDLE);
@@ -227,355 +41,332 @@ impl Drop for Handle {
     }
 }
 
-fn os_error(what: &str, e: windows::core::Error) -> AppError {
-    AppError::new(ErrorKind::Os, format!("Could not {what}: {}", e.message()))
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(Some(0)).collect()
 }
 
-/// Start type, image path and delayed-start flag, from a handle opened for `SERVICE_QUERY_CONFIG`
-/// only. `None` when Windows will not let us read this service.
-fn read_config(scm: &Handle, name: &str) -> Option<(u32, Option<String>, bool)> {
-    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-    // SAFETY: `wide` is NUL-terminated and outlives the call; every buffer is sized from the
-    // length Windows reports, and u64 storage keeps the structs aligned.
+fn config_command(scm: &Handle, name: &str) -> Option<String> {
+    let name = wide(name);
+    // SAFETY: `name` is NUL-terminated and outlives the call; the buffer is sized from the length
+    // Windows reports, in u64 units so the struct is aligned.
     unsafe {
-        let svc = Handle(OpenServiceW(scm.0, PCWSTR(wide.as_ptr()), SERVICE_QUERY_CONFIG).ok()?);
+        let svc = Handle(OpenServiceW(scm.0, PCWSTR(name.as_ptr()), SERVICE_QUERY_CONFIG).ok()?);
         let mut needed = 0u32;
         let _ = QueryServiceConfigW(svc.0, None, 0, &mut needed);
         let mut buf = vec![0u64; (needed as usize).div_ceil(8).max(1)];
         let cfg = buf.as_mut_ptr().cast::<QUERY_SERVICE_CONFIGW>();
         QueryServiceConfigW(svc.0, Some(cfg), (buf.len() * 8) as u32, &mut needed).ok()?;
-        let start = (*cfg).dwStartType.0;
-        let path = (*cfg)
-            .lpBinaryPathName
-            .to_string()
-            .ok()
-            .filter(|p| !p.is_empty());
-        let mut delayed = [0u8; 8];
-        let mut n = 0u32;
-        let is_delayed = QueryServiceConfig2W(
-            svc.0,
-            SERVICE_CONFIG_DELAYED_AUTO_START_INFO,
-            Some(&mut delayed),
-            &mut n,
-        )
-        .is_ok()
-            && u32::from_ne_bytes([delayed[0], delayed[1], delayed[2], delayed[3]]) != 0;
-        Some((start, path, is_delayed))
+        (*cfg).lpBinaryPathName.to_string().ok()
     }
 }
 
-pub fn list() -> AppResult<Vec<WinService>> {
-    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-    // SAFETY: standard Enum* paging loop; `buf` is u64-aligned and sized from `needed`, and the
-    // entry strings point into it, so they are copied out before the buffer is reused.
+/// Every service that runs in a process of its own or a shared one, running or not.
+pub fn list() -> Vec<Svc> {
+    // SAFETY: standard two-call enumeration; the buffer is u64-aligned and sized from the reply,
+    // and every name pointer read from it stays valid while `buf` lives.
     unsafe {
-        let scm = Handle(
-            OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_ENUMERATE_SERVICE)
-                .map_err(|e| os_error("open the service manager", e))?,
-        );
-        let mut out = Vec::new();
-        let mut resume = 0u32;
-        let mut buf: Vec<u64> = vec![0; 1 << 15];
+        let Ok(scm) = OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_ENUMERATE_SERVICE)
+        else {
+            return vec![];
+        };
+        let scm = Handle(scm);
+        let (mut needed, mut count, mut resume) = (0u32, 0u32, 0u32);
+        let mut buf: Vec<u64> = vec![];
+        let mut out = vec![];
         loop {
-            let mut needed = 0u32;
-            let mut returned = 0u32;
-            let bytes =
-                std::slice::from_raw_parts_mut(buf.as_mut_ptr().cast::<u8>(), buf.len() * 8);
-            let result = EnumServicesStatusExW(
+            let slice = (!buf.is_empty()).then(|| {
+                std::slice::from_raw_parts_mut(buf.as_mut_ptr().cast::<u8>(), buf.len() * 8)
+            });
+            let r = EnumServicesStatusExW(
                 scm.0,
                 SC_ENUM_PROCESS_INFO,
                 SERVICE_WIN32,
                 SERVICE_STATE_ALL,
-                Some(bytes),
+                slice,
                 &mut needed,
-                &mut returned,
+                &mut count,
                 Some(&mut resume),
                 PCWSTR::null(),
             );
-            let more = match &result {
+            let more = match &r {
                 Ok(()) => false,
                 Err(e) if e.code() == ERROR_MORE_DATA.to_hresult() => true,
-                Err(e) => return Err(os_error("list Windows services", e.clone())),
+                Err(_) => break,
             };
-            let entries = buf.as_ptr().cast::<ENUM_SERVICE_STATUS_PROCESSW>();
-            for i in 0..returned as usize {
-                let e = &*entries.add(i);
-                let name = e.lpServiceName.to_string().unwrap_or_default();
-                let display_name = e.lpDisplayName.to_string().unwrap_or_default();
-                let st = &e.ServiceStatusProcess;
-                let config = read_config(&scm, &name);
-                let (start_raw, binary_path, delayed) = match config {
-                    Some((s, p, d)) => (Some(s), p, d),
-                    None => (None, None, false),
+            let items = buf.as_ptr().cast::<ENUM_SERVICE_STATUS_PROCESSW>();
+            for i in 0..count as usize {
+                let item = &*items.add(i);
+                let Ok(name) = item.lpServiceName.to_string() else {
+                    continue;
                 };
-                let start_type = match start_raw {
-                    Some(0) => StartType::Boot,
-                    Some(1) => StartType::System,
-                    Some(2) if delayed => StartType::AutoDelayed,
-                    Some(2) => StartType::Auto,
-                    Some(4) => StartType::Disabled,
-                    _ => StartType::Manual,
-                };
-                out.push(WinService {
-                    protected: is_protected(
-                        st.dwServiceType.0,
-                        binary_path.as_deref(),
-                        &name,
-                        &system_root,
-                    ),
-                    developer: is_developer(&name, &display_name, DEV_PATTERNS, &[]),
-                    state: state_from(st.dwCurrentState.0),
-                    start_type,
-                    service_type: type_label(st.dwServiceType.0),
-                    pid: (st.dwProcessId != 0).then_some(st.dwProcessId),
-                    binary_path,
-                    name,
-                    display_name,
-                });
+                let pid = item.ServiceStatusProcess.dwProcessId;
+                if let Some(command) = config_command(&scm, &name) {
+                    out.push(Svc {
+                        name,
+                        command,
+                        pid: (pid != 0).then_some(pid),
+                    });
+                }
             }
             if !more {
                 break;
             }
+            if count == 0 {
+                // Too small for even one entry: grow, and make sure we always do.
+                let want = (needed as usize).max(buf.len() * 16);
+                buf = vec![0u64; want.div_ceil(8)];
+            }
         }
-        out.sort_by_key(|s| s.display_name.to_lowercase());
-        Ok(out)
+        out
     }
 }
 
-/// The service named `name` (case-insensitive), if it exists.
-pub fn find(name: &str) -> AppResult<Option<WinService>> {
-    Ok(list()?
+/// The name of the service that runs exactly this program and arguments, if one does.
+pub fn find(exe: &str, args: &[String]) -> Option<String> {
+    list()
         .into_iter()
-        .find(|s| s.name.eq_ignore_ascii_case(name)))
+        .find(|s| runs(s, exe, args))
+        .map(|s| s.name)
 }
 
-fn open_service(name: &str, access: u32) -> AppResult<(Handle, Handle)> {
-    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-    // SAFETY: `wide` is NUL-terminated and outlives the call; handles are closed by `Handle`.
+/// The hosting process id while the service runs; `None` when it is not running (or unreadable).
+pub fn running_pid(name: &str) -> Option<u32> {
+    let name = wide(name);
+    // SAFETY: `name` is NUL-terminated and outlives the call; the out buffer is a plain struct.
     unsafe {
         let scm = Handle(
-            OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), 0x0001)
-                .map_err(|e| os_error("open the service manager", e))?,
+            OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_ENUMERATE_SERVICE).ok()?,
         );
-        let svc = Handle(
-            OpenServiceW(scm.0, PCWSTR(wide.as_ptr()), access)
-                .map_err(|e| os_error(&format!("open service {name}"), e))?,
+        let svc = Handle(OpenServiceW(scm.0, PCWSTR(name.as_ptr()), SERVICE_QUERY_STATUS).ok()?);
+        let mut st = SERVICE_STATUS_PROCESS::default();
+        let mut needed = 0u32;
+        let bytes = std::slice::from_raw_parts_mut(
+            (&mut st as *mut SERVICE_STATUS_PROCESS).cast::<u8>(),
+            std::mem::size_of::<SERVICE_STATUS_PROCESS>(),
         );
-        Ok((scm, svc))
+        QueryServiceStatusEx(svc.0, SC_STATUS_PROCESS_INFO, Some(bytes), &mut needed).ok()?;
+        (st.dwCurrentState.0 == SERVICE_RUNNING && st.dwProcessId != 0).then_some(st.dwProcessId)
     }
 }
 
-fn current_state(svc: &Handle) -> AppResult<u32> {
-    let mut st = SERVICE_STATUS::default();
-    // SAFETY: `st` is a valid out-pointer for the call.
-    unsafe { QueryServiceStatus(svc.0, &mut st) }
-        .map_err(|e| os_error("read service status", e))?;
-    Ok(st.dwCurrentState.0)
-}
-
-fn wait_for(svc: &Handle, target: u32, what: &str) -> AppResult<()> {
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while current_state(svc)? != target {
-        if Instant::now() > deadline {
-            return Err(AppError::new(
-                ErrorKind::Os,
-                format!("The service did not {what} within 30 seconds."),
-            ));
+/// Splits a service's command into program and arguments, the way Windows reads it: double
+/// quotes group, spaces separate.
+pub fn split_command(command: &str) -> (String, Vec<String>) {
+    let mut parts: Vec<String> = vec![];
+    let (mut cur, mut quoted, mut any) = (String::new(), false, false);
+    for c in command.trim().chars() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                any = true;
+            }
+            c if c.is_whitespace() && !quoted => {
+                if any {
+                    parts.push(std::mem::take(&mut cur));
+                    any = false;
+                }
+            }
+            c => {
+                cur.push(c);
+                any = true;
+            }
         }
-        std::thread::sleep(Duration::from_millis(250));
     }
-    Ok(())
+    if any {
+        parts.push(cur);
+    }
+    let mut it = parts.into_iter();
+    (it.next().unwrap_or_default(), it.collect())
 }
 
-/// Starts a service and waits until it is running. Opens it with `SERVICE_START` only.
-pub fn start(name: &str) -> AppResult<()> {
-    let (_scm, svc) = open_service(name, SERVICE_START | SERVICE_QUERY_STATUS)?;
-    if current_state(&svc)? == 4 {
-        return Ok(());
-    }
-    // SAFETY: valid service handle; no arguments are passed.
-    unsafe { StartServiceW(svc.0, None) }.map_err(|e| os_error("start the service", e))?;
-    wait_for(&svc, 4, "start")
+/// True when `svc` runs exactly this program with exactly these arguments. Exact, so a service of
+/// your own that merely uses the same program is never mistaken for the Windows service. A shared
+/// host never matches: its command is the same for many services, so it names none of them.
+pub fn runs(svc: &Svc, exe: &str, args: &[String]) -> bool {
+    let (prog, a) = split_command(&svc.command);
+    prog.eq_ignore_ascii_case(exe) && a == args && !is_shared_host(svc)
 }
 
-/// Asks a service to stop and waits until it has. Opens it with `SERVICE_STOP` only.
-pub fn stop(name: &str) -> AppResult<()> {
-    let (_scm, svc) = open_service(name, SERVICE_STOP | SERVICE_QUERY_STATUS)?;
-    if current_state(&svc)? == 1 {
-        return Ok(());
+/// A host shared by many services (`svchost.exe`). A program that merely runs below one, such as
+/// a scheduled task, is not any one of those services.
+pub fn is_shared_host(svc: &Svc) -> bool {
+    split_command(&svc.command)
+        .0
+        .to_ascii_lowercase()
+        .ends_with("svchost.exe")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Control {
+    Start,
+    Stop,
+}
+
+/// Starts or stops the service through `sc.exe`, run with administrator rights. The caller passes
+/// a name that came from `list`; anything else is refused. Cancelling the prompt is
+/// `ErrorKind::Cancelled`. Returns once `sc.exe` has accepted the request; the caller watches
+/// `running_pid` for the result.
+pub fn control(name: &str, what: Control) -> AppResult<()> {
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_.-$".contains(c))
+    {
+        return Err(AppError::new(
+            ErrorKind::Validation,
+            "Orbit will not control a Windows service with that name.",
+        ));
     }
-    let mut st = SERVICE_STATUS::default();
-    // SAFETY: valid service handle and out-pointer.
-    unsafe { ControlService(svc.0, SERVICE_CONTROL_STOP, &mut st) }
-        .map_err(|e| os_error("stop the service", e))?;
-    wait_for(&svc, 1, "stop")
+    // Asked from Windows, not read from an environment variable: this program runs elevated.
+    let mut dir = [0u16; 260];
+    // SAFETY: the buffer is valid for the length passed.
+    let len = unsafe { GetSystemDirectoryW(Some(&mut dir)) } as usize;
+    if len == 0 || len >= dir.len() {
+        return Err(AppError::new(
+            ErrorKind::Os,
+            "Could not find the Windows system folder.",
+        ));
+    }
+    let sc = format!(r"{}\sc.exe", String::from_utf16_lossy(&dir[..len]));
+    let verb = wide("runas");
+    let file = wide(&sc);
+    let params = wide(&format!(
+        "{} {name}",
+        if what == Control::Start {
+            "start"
+        } else {
+            "stop"
+        }
+    ));
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        lpVerb: PCWSTR(verb.as_ptr()),
+        lpFile: PCWSTR(file.as_ptr()),
+        lpParameters: PCWSTR(params.as_ptr()),
+        nShow: 0, // SW_HIDE
+        ..Default::default()
+    };
+    // SAFETY: `info` and the wide strings it points at outlive the call; the process handle is
+    // waited on and closed exactly once.
+    let code = unsafe {
+        if let Err(e) = ShellExecuteExW(&mut info) {
+            return Err(if e.code() == ERROR_CANCELLED.to_hresult() {
+                AppError::new(
+                    ErrorKind::Cancelled,
+                    "The administrator prompt was cancelled.",
+                )
+            } else {
+                AppError::new(
+                    ErrorKind::Os,
+                    format!(
+                        "Could not ask Windows for administrator rights: {}",
+                        e.message()
+                    ),
+                )
+            });
+        }
+        let process = info.hProcess;
+        let waited = WaitForSingleObject(process, INFINITE);
+        let mut code = 0u32;
+        let got = GetExitCodeProcess(process, &mut code);
+        let _ = CloseHandle(process);
+        if waited != WAIT_OBJECT_0 || got.is_err() {
+            return Err(AppError::new(ErrorKind::Os, "Waiting for sc.exe failed."));
+        }
+        code
+    };
+    match (code, what) {
+        (0, _) | (ALREADY_RUNNING, Control::Start) | (NOT_STARTED, Control::Stop) => Ok(()),
+        _ => Err(AppError::new(
+            ErrorKind::Os,
+            format!("Windows refused to change the service (sc.exe exit code {code})."),
+        )),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ROOT: &str = r"C:\Windows";
-    const OWN: u32 = 0x10;
-    const SHARE: u32 = 0x20;
-    const KERNEL_DRIVER: u32 = 0x1;
-    const FS_DRIVER: u32 = 0x2;
-
-    fn protected(t: u32, path: &str, name: &str) -> bool {
-        is_protected(t, Some(path), name, ROOT)
-    }
-
-    #[test]
-    fn drivers_are_protected_whatever_their_path() {
-        assert!(protected(KERNEL_DRIVER, r"C:\Tools\thing.sys", "thing"));
-        assert!(protected(FS_DRIVER, r"C:\Tools\fs.sys", "fs"));
-    }
-
-    #[test]
-    fn images_under_the_windows_directory_are_protected() {
-        assert!(protected(
-            SHARE,
-            r"C:\Windows\System32\svchost.exe -k netsvcs -p",
-            "Spooler"
-        ));
-        assert!(protected(
-            OWN,
-            r"C:\Windows\System32\spoolsv.exe",
-            "Spooler"
-        ));
-        assert!(protected(
-            OWN,
-            r#""C:\Windows\System32\svchost.exe" -k LocalService"#,
-            "X"
-        ));
-        assert!(protected(OWN, r"c:\WINDOWS\system32\svchost.exe", "X"));
-        assert!(protected(OWN, "C:/Windows/System32/svchost.exe", "X"));
-        assert!(protected(
-            OWN,
-            r"%SystemRoot%\system32\svchost.exe -k x",
-            "X"
-        ));
-        assert!(protected(OWN, r"\SystemRoot\System32\drivers\x.sys", "X"));
-        assert!(protected(OWN, r"\??\C:\Windows\System32\x.exe", "X"));
-    }
-
-    #[test]
-    fn a_path_with_spaces_is_judged_by_the_executable_not_its_arguments() {
-        // Unquoted image path containing spaces: the .exe ends it.
-        assert!(!protected(
-            OWN,
-            r"C:\Program Files\Some App\svc.exe --config C:\Windows\x.ini",
-            "someapp"
-        ));
-        assert!(!protected(
-            OWN,
-            r#""C:\Program Files\App\a.exe" C:\Windows\arg"#,
-            "someapp"
-        ));
-    }
-
-    #[test]
-    fn third_party_services_are_not_protected() {
-        assert!(!protected(
-            OWN,
-            r"C:\Program Files\PostgreSQL\16\bin\postgres.exe",
-            "postgresql-x64-16"
-        ));
-        assert!(!protected(
-            OWN,
-            r#""C:\Program Files\Docker\Docker\resources\com.docker.service""#,
-            "com.docker.service"
-        ));
-        // A service whose configuration cannot be read is never offered controls.
-        assert!(is_protected(OWN, None, "mystery", ROOT));
-    }
-
-    #[test]
-    fn a_folder_that_merely_starts_with_windows_is_not_the_windows_directory() {
-        assert!(!protected(OWN, r"C:\Windows.old\x.exe", "old"));
-        assert!(!protected(OWN, r"C:\WindowsApps\x.exe", "apps"));
-    }
-
-    #[test]
-    fn core_names_are_protected_even_with_an_odd_path_and_ignoring_case() {
-        for n in [
-            "RpcSs",
-            "EventLog",
-            "winmgmt",
-            "MPSSVC",
-            "WinDefend",
-            "TrustedInstaller",
-        ] {
-            assert!(protected(OWN, r"D:\elsewhere\x.exe", n), "{n}");
+    fn svc(command: &str) -> Svc {
+        Svc {
+            name: "Redis".into(),
+            command: command.into(),
+            pid: None,
         }
-        assert!(is_protected(OWN, None, "Dhcp", ROOT));
     }
 
     #[test]
-    fn a_different_system_root_is_respected() {
-        assert!(is_protected(
-            OWN,
-            Some(r"D:\WinNT\system32\x.exe"),
-            "x",
-            r"D:\WinNT"
+    fn a_service_command_splits_the_way_windows_reads_it() {
+        let (exe, args) = split_command(
+            r#""C:\Program Files\Redis\redis-server.exe" --service-run "C:\Program Files\Redis\redis.conf" --x"#,
+        );
+        assert_eq!(exe, r"C:\Program Files\Redis\redis-server.exe");
+        assert_eq!(
+            args,
+            [
+                r"--service-run",
+                r"C:\Program Files\Redis\redis.conf",
+                "--x"
+            ]
+        );
+        assert_eq!(split_command("  "), (String::new(), vec![]));
+        assert_eq!(split_command(r#"a "" b"#).1, ["", "b"]);
+    }
+
+    #[test]
+    fn only_the_exact_command_counts_as_the_service() {
+        let host = svc(r"C:\Windows\system32\svchost.exe -k netsvcs -p");
+        let (exe, args) = split_command(&host.command);
+        assert!(!runs(&host, &exe, &args));
+        let s = svc(r#""C:\R\redis-server.exe" --service-run "C:\R\r.conf""#);
+        let args = |a: &[&str]| a.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert!(runs(
+            &s,
+            r"c:\r\REDIS-server.exe",
+            &args(&["--service-run", r"C:\R\r.conf"])
         ));
-        assert!(!is_protected(
-            OWN,
-            Some(r"C:\Windows\system32\x.exe"),
-            "x",
-            r"D:\WinNT"
+        assert!(!runs(
+            &s,
+            r"C:\R\redis-server.exe",
+            &args(&["--port", "6390"])
+        ));
+        assert!(!runs(
+            &s,
+            r"C:\R\other.exe",
+            &args(&["--service-run", r"C:\R\r.conf"])
         ));
     }
 
-    fn dev(name: &str, display: &str, pins: &[&str]) -> bool {
-        let pins: Vec<String> = pins.iter().map(|s| s.to_string()).collect();
-        is_developer(name, display, DEV_PATTERNS, &pins)
+    #[test]
+    fn a_shared_service_host_is_recognised() {
+        assert!(is_shared_host(&svc(
+            r"C:\Windows\system32\svchost.exe -k netsvcs -p"
+        )));
+        assert!(is_shared_host(&svc(
+            r#""C:\Windows\System32\SvcHost.exe" -k x"#
+        )));
+        assert!(!is_shared_host(&svc(
+            r#""C:\R\redis-server.exe" --service-run"#
+        )));
     }
 
     #[test]
-    fn developer_patterns_match_prefixes_and_exact_names_ignoring_case() {
-        assert!(dev("postgresql-x64-16", "postgresql-x64-16", &[]));
-        assert!(dev("MySQL80", "MySQL80", &[]));
-        assert!(dev("com.docker.service", "Docker Desktop Service", &[]));
-        assert!(dev("W3SVC", "World Wide Web Publishing Service", &[]));
-        assert!(dev("hns", "Host Network Service", &[]));
-        assert!(dev("MSSQL$SQLEXPRESS", "SQL Server (SQLEXPRESS)", &[]));
+    fn a_name_that_is_not_a_plain_service_name_is_refused_before_anything_runs() {
+        for bad in ["", "a b", "x & calc", "a\"b", r"..\evil", "a/b"] {
+            let e = control(bad, Control::Stop).unwrap_err();
+            assert_eq!(e.kind, ErrorKind::Validation, "{bad}");
+        }
     }
 
     #[test]
-    fn exact_patterns_do_not_match_longer_names() {
-        assert!(!dev("wasabi", "Wasabi", &[]));
-        assert!(!dev("hnsx", "Other", &[]));
-        assert!(!dev("Spooler", "Print Spooler", &[]));
-    }
-
-    #[test]
-    fn the_display_name_can_match_too() {
-        assert!(dev("svc1234", "Redis Server", &[]));
-    }
-
-    #[test]
-    fn pins_add_services_by_exact_name_ignoring_case() {
-        assert!(!dev("MyApi", "My API", &[]));
-        assert!(dev("MyApi", "My API", &["myapi"]));
-        assert!(!dev("MyApiTwo", "x", &["myapi"]));
-    }
-
-    #[test]
-    #[ignore]
-    fn the_real_service_list_includes_the_event_log_as_protected_and_running() {
-        let all = list().unwrap();
+    fn this_pc_lists_services_and_reads_a_state() {
+        let all = list();
         assert!(all.len() > 20, "{} services", all.len());
-        let log = all
-            .iter()
-            .find(|s| s.name.eq_ignore_ascii_case("EventLog"))
-            .expect("EventLog exists");
-        assert!(log.protected);
-        assert_eq!(log.state, ServiceState::Running);
-        assert!(log.pid.is_some());
-        assert!(log.binary_path.is_some());
-        // Nothing is protected by accident: some services are not.
-        assert!(all.iter().any(|s| !s.protected));
-        assert!(all.iter().any(|s| s.start_type == StartType::AutoDelayed));
+        // RpcSs always runs; its host process id must be readable without any rights.
+        assert!(all.iter().any(|s| s.name == "RpcSs" && s.pid.is_some()));
+        assert!(running_pid("RpcSs").is_some());
+        assert!(running_pid("no-such-service-xyz").is_none());
     }
 }

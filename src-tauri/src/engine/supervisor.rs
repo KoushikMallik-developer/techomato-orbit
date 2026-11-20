@@ -12,7 +12,8 @@ use crate::repo::{processes, services as repo};
 use crate::secrets::SecretStore;
 use crate::windows::console::send_graceful_with;
 use crate::windows::job::{spawn, terminate_tree, Job, ManagedProcess, SpawnSpec};
-use crate::windows::procs::{is_alive, ProcId};
+use crate::windows::procs::{identify, is_alive, ProcId};
+use crate::windows::scm::{self, Control};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -173,6 +174,13 @@ impl Supervisor {
         self.0.sink(id)
     }
 
+    /// Removes a deleted service's logs: memory, the rotated files and the keep-running raw file.
+    pub fn forget_logs(&self, id: &str) {
+        self.0.sink(id).clear();
+        self.0.sinks.lock().unwrap().remove(id);
+        let _ = std::fs::remove_file(self.0.logs_dir.join(format!("{id}.raw")));
+    }
+
     // ---- lifecycle -----------------------------------------------------------------------
 
     pub fn start(&self, id: &str) -> AppResult<()> {
@@ -194,13 +202,20 @@ impl Supervisor {
     /// graceful step. Blocks until the process is gone.
     pub fn stop(&self, id: &str, force: bool) -> AppResult<()> {
         let inner = &self.0;
+        if let Some(name) = inner.windows_service(id) {
+            return inner.control_service(id, &name, Control::Stop);
+        }
         let slot = inner.slot(id);
         let timeout = repo::get(&inner.db, id)
             .map(|s| Duration::from_secs(u64::from(s.shutdown_timeout_secs)))
             .unwrap_or(Duration::from_secs(10));
 
+        let up_without_process;
         let (target, rt) = {
             let mut st = slot.state.lock().unwrap();
+            // Running with no process of ours: Windows reported it, and there is nothing to end.
+            up_without_process =
+                st.proc.is_none() && matches!(st.rt.status, Status::Running | Status::Unresponsive);
             if st.rt.status == Status::Stopping && force {
                 (st.proc.as_ref().map(|p| (p.id, p.job.clone())), None)
             } else {
@@ -218,6 +233,9 @@ impl Supervisor {
             (inner.emit)(&rt);
         }
         let Some((pid_id, job)) = target else {
+            if up_without_process {
+                inner.settle(&slot, Status::Stopped, None, None);
+            }
             return Ok(());
         };
 
@@ -287,29 +305,40 @@ impl Supervisor {
                 );
                 continue;
             }
-            let slot = inner.slot(&rec.service_id);
-            let rt = {
-                let mut st = slot.state.lock().unwrap();
-                st.proc = Some(ProcHandle {
-                    id: rec.id,
-                    job: None,
-                });
-                st.rt.status = Status::Running;
-                st.rt.pid = Some(rec.id.pid);
-                st.rt.parent_pid = None;
-                st.rt.started_at_ms = Some(rec.id.created_at_ms);
-                st.rt.clone()
-            };
-            (inner.emit)(&rt);
-            processes::note(
-                &inner.db,
-                Some(&rec.service_id),
-                "adopted",
+            inner.attach(
+                &rec.service_id,
+                rec.id,
                 "Re-attached to a service that kept running while Orbit was closed.",
             );
-            let inner = self.0.clone();
-            std::thread::spawn(move || inner.monitor_adopted(&rec.service_id, rec.id));
         }
+    }
+
+    /// Takes over a program Orbit did not start (found already running): the service shows as
+    /// running, can be stopped, and is started again with its own command afterwards. The caller
+    /// has checked that `id` is that program.
+    pub fn adopt(&self, service_id: &str, id: ProcId) {
+        let _ = processes::save(&self.0.db, service_id, &id, now_ms() as i64);
+        self.0.attach(
+            service_id,
+            id,
+            "Took over a program that was already running.",
+        );
+    }
+
+    /// A service that Windows runs (not Orbit) changed state: `Some(pid)` when it is up. Does
+    /// nothing while Orbit is itself starting or stopping it, or when nothing changed.
+    pub fn set_external(&self, id: &str, running: Option<u32>) {
+        let slot = self.0.slot(id);
+        {
+            let st = slot.state.lock().unwrap();
+            let up = matches!(st.rt.status, Status::Running | Status::Unresponsive);
+            if matches!(st.rt.status, Status::Starting | Status::Stopping)
+                || (up == running.is_some() && st.rt.pid == running)
+            {
+                return;
+            }
+        }
+        self.0.apply_external(&slot, running, None);
     }
 }
 
@@ -396,6 +425,75 @@ impl Inner {
         }
     }
 
+    /// The Windows service that runs exactly this service's command, if there is one. Such a
+    /// service is started and stopped through Windows, never by running its program a second time.
+    fn windows_service(&self, id: &str) -> Option<String> {
+        let spec = repo::get(&self.db, id).ok()?;
+        scm::find(&spec.executable, &spec.args)
+    }
+
+    /// Shows the state Windows reports for a service Orbit does not spawn.
+    fn apply_external(&self, slot: &Slot, pid: Option<u32>, error: Option<String>) {
+        let rt = {
+            let mut st = slot.state.lock().unwrap();
+            if st.rt.pid != pid {
+                st.rt.started_at_ms =
+                    pid.map(|p| identify(p).map_or_else(now_ms, |i| i.created_at_ms));
+            }
+            st.rt.status = if pid.is_some() {
+                Status::Running
+            } else {
+                Status::Stopped
+            };
+            st.rt.pid = pid;
+            st.rt.last_error = error;
+            st.rt.clone()
+        };
+        (self.emit)(&rt);
+    }
+
+    /// Start or stop a Windows service. Windows asks for administrator rights, so this blocks on
+    /// a UAC prompt; declining leaves the service as it was.
+    fn control_service(&self, id: &str, name: &str, what: Control) -> AppResult<()> {
+        let starting = what == Control::Start;
+        let slot = self.slot(id);
+        let first = {
+            let mut st = slot.state.lock().unwrap();
+            let event = if starting { Event::Start } else { Event::Stop };
+            st.rt.status = next(st.rt.status, event).map_err(|_| {
+                conflict(if starting {
+                    "This service is already running or starting."
+                } else {
+                    "This service is not running."
+                })
+            })?;
+            st.rt.exit_code = None;
+            st.rt.last_error = None;
+            st.rt.clone()
+        };
+        (self.emit)(&first);
+        let result = scm::control(name, what).and_then(|()| {
+            let deadline = Instant::now() + Duration::from_secs(30);
+            while scm::running_pid(name).is_some() != starting {
+                if Instant::now() > deadline {
+                    return Err(AppError::new(
+                        ErrorKind::Os,
+                        "Windows did not finish changing the service in time.",
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            Ok(())
+        });
+        let error = result
+            .as_ref()
+            .err()
+            .filter(|e| e.kind != ErrorKind::Cancelled)
+            .map(|e| e.message.clone());
+        self.apply_external(&slot, scm::running_pid(name), error);
+        result
+    }
+
     fn note(&self, id: &str, kind: &str, msg: &str) {
         processes::note(&self.db, Some(id), kind, msg);
     }
@@ -407,6 +505,9 @@ impl Inner {
                 ErrorKind::Validation,
                 "This service is disabled. Enable it before starting.",
             ));
+        }
+        if let Some(name) = self.windows_service(id) {
+            return self.control_service(id, &name, Control::Start);
         }
         let slot = self.slot(id);
 
@@ -791,6 +892,25 @@ impl Inner {
         let _ = self.start_inner(id, false);
     }
 
+    /// Shows a process Orbit did not spawn as this service's running process and watches it.
+    fn attach(self: &Arc<Self>, service_id: &str, id: ProcId, why: &str) {
+        let slot = self.slot(service_id);
+        let rt = {
+            let mut st = slot.state.lock().unwrap();
+            st.proc = Some(ProcHandle { id, job: None });
+            st.rt.status = Status::Running;
+            st.rt.pid = Some(id.pid);
+            st.rt.parent_pid = None;
+            st.rt.started_at_ms = Some(id.created_at_ms);
+            st.rt.clone()
+        };
+        (self.emit)(&rt);
+        processes::note(&self.db, Some(service_id), "adopted", why);
+        let inner = self.clone();
+        let service_id = service_id.to_string();
+        std::thread::spawn(move || inner.monitor_adopted(&service_id, id));
+    }
+
     fn monitor_adopted(self: Arc<Self>, id: &str, proc_id: ProcId) {
         let slot = self.slot(id);
         while is_alive(&proc_id) {
@@ -807,5 +927,76 @@ impl Inner {
         let _ = processes::clear(&self.db, id);
         self.note(id, "stopped", "The re-attached service ended.");
         (self.emit)(&rt);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::open_in_memory;
+    use crate::secrets::InMemorySecretStore;
+
+    #[test]
+    fn a_state_change_made_by_windows_shows_up_and_is_ignored_mid_transition() {
+        let seen = Arc::new(Mutex::new(vec![]));
+        let log = seen.clone();
+        let sup = Supervisor::new(
+            Arc::new(open_in_memory().unwrap()),
+            Arc::new(InMemorySecretStore::default()),
+            PathBuf::new(),
+            PathBuf::new(),
+            Arc::new(move |rt: &ServiceRuntime| log.lock().unwrap().push((rt.status, rt.pid))),
+        );
+        sup.set_external("a", Some(4242));
+        sup.set_external("a", Some(4242)); // unchanged: no second event
+        assert_eq!(sup.runtime("a").status, Status::Running);
+        assert_eq!(sup.runtime("a").pid, Some(4242));
+        sup.set_external("a", None);
+        assert_eq!(sup.runtime("a").status, Status::Stopped);
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [(Status::Running, Some(4242)), (Status::Stopped, None)]
+        );
+        // While Orbit is stopping it, the state Windows reports must not overwrite that.
+        sup.0.slot("b").state.lock().unwrap().rt.status = Status::Stopping;
+        sup.set_external("b", Some(1));
+        assert_eq!(sup.runtime("b").status, Status::Stopping);
+    }
+
+    #[test]
+    fn stopping_a_service_that_windows_runs_but_orbit_cannot_reach_ends_stopped() {
+        let sup = Supervisor::new(
+            Arc::new(open_in_memory().unwrap()),
+            Arc::new(InMemorySecretStore::default()),
+            PathBuf::new(),
+            PathBuf::new(),
+            Arc::new(|_: &ServiceRuntime| {}),
+        );
+        sup.set_external("a", Some(4242));
+        sup.stop("a", false).unwrap();
+        assert_eq!(sup.runtime("a").status, Status::Stopped);
+        assert_eq!(sup.runtime("a").pid, None);
+    }
+
+    #[test]
+    fn forgetting_a_service_removes_its_log_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let sup = Supervisor::new(
+            Arc::new(open_in_memory().unwrap()),
+            Arc::new(InMemorySecretStore::default()),
+            dir.path().to_path_buf(),
+            PathBuf::new(),
+            Arc::new(|_: &ServiceRuntime| {}),
+        );
+        let sink = sup.logs("abc");
+        sink.push(Stream::Stdout, "hello");
+        sink.flush();
+        std::fs::write(dir.path().join("abc.raw"), b"x").unwrap();
+        assert!(dir.path().join("abc.log").exists());
+
+        sup.forget_logs("abc");
+        assert!(!dir.path().join("abc.log").exists());
+        assert!(!dir.path().join("abc.raw").exists());
+        assert!(sup.0.sinks.lock().unwrap().is_empty());
     }
 }

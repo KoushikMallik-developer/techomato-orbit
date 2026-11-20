@@ -86,7 +86,6 @@ pub struct ServiceSpec {
     pub restart: RestartPolicy,
     pub health: Option<HealthCheck>,
     pub keep_running_on_quit: bool,
-    pub allow_multiple: bool,
     pub enabled: bool,
 }
 
@@ -171,7 +170,6 @@ pub mod fixtures {
             restart: RestartPolicy::Never,
             health: None,
             keep_running_on_quit: false,
-            allow_multiple: false,
             enabled: true,
         }
     }

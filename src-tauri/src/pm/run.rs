@@ -1,15 +1,14 @@
-//! Finds a package manager and runs it with an argument array, a timeout, and every output line
-//! passed to a callback as it arrives. No shell is involved, so ids and search text stay literal.
+//! Runs a program with an argument array, a timeout, and every output line passed to a callback
+//! as it arrives. No shell is involved, so text stays literal.
 
-use super::Manager;
 use std::io::Read;
 use std::os::windows::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-/// An executable plus leading arguments (Scoop runs through PowerShell so its arguments stay literal).
+/// An executable plus leading arguments (for example `powershell -File script.ps1`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Launcher {
     pub program: PathBuf,
@@ -27,67 +26,6 @@ pub struct Output {
 pub enum RunError {
     Spawn(String),
     TimedOut,
-}
-
-fn exists(p: &Path) -> bool {
-    // App execution aliases (winget.exe) are reparse points that `Path::exists` can reject.
-    std::fs::symlink_metadata(p).is_ok()
-}
-
-fn on_path(file: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join(file))
-        .find(|p| exists(p))
-}
-
-fn env_dir(var: &str) -> Option<PathBuf> {
-    std::env::var_os(var).map(PathBuf::from)
-}
-
-/// The launcher for `manager`, or `None` when it is not installed.
-pub fn locate(manager: Manager) -> Option<Launcher> {
-    let plain = |program: PathBuf| Launcher {
-        program,
-        prefix: vec![],
-    };
-    match manager {
-        Manager::Winget => on_path("winget.exe")
-            .or_else(|| {
-                let p = env_dir("LOCALAPPDATA")?.join(r"Microsoft\WindowsApps\winget.exe");
-                exists(&p).then_some(p)
-            })
-            .map(plain),
-        Manager::Choco => on_path("choco.exe")
-            .or_else(|| {
-                let p = env_dir("ChocolateyInstall")?.join(r"bin\choco.exe");
-                exists(&p).then_some(p)
-            })
-            .map(plain),
-        Manager::Scoop => {
-            let root =
-                env_dir("SCOOP").or_else(|| env_dir("USERPROFILE").map(|u| u.join("scoop")))?;
-            let script = root.join(r"shims\scoop.ps1");
-            if !exists(&script) {
-                return None;
-            }
-            let ps = env_dir("SystemRoot")?.join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
-            Some(Launcher {
-                program: ps,
-                prefix: [
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                ]
-                .iter()
-                .map(|s| s.to_string())
-                .chain([script.to_string_lossy().into_owned()])
-                .collect(),
-            })
-        }
-    }
 }
 
 /// Splits a byte stream into lines on LF and CR, so a multi-byte character cut between two
@@ -294,14 +232,5 @@ mod tests {
         let o = run(&l, &s(&["a & echo pwned"]), Duration::from_secs(20), |_| {}).unwrap();
         let lines: Vec<&str> = o.stdout.lines().collect();
         assert_eq!(lines, ["1", "a & echo pwned"]);
-    }
-
-    #[test]
-    #[ignore = "needs winget"]
-    fn real_winget_is_found() {
-        if std::env::var_os("CI").is_some() {
-            return; // runners may not ship winget
-        }
-        assert!(locate(Manager::Winget).is_some());
     }
 }

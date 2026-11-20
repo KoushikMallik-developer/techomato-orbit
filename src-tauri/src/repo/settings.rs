@@ -74,7 +74,7 @@ mod tests {
         let db = open_in_memory().unwrap();
         let mut p = Prefs::default();
         p.notify.started = true;
-        p.modules.ports = false;
+        p.modules.doctor = false;
         p.start_with_windows = true;
         set_prefs(&db, &p).unwrap();
         assert_eq!(prefs(&db).unwrap(), p);

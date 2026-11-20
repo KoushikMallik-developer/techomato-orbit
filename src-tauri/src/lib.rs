@@ -1,8 +1,8 @@
 pub mod commands;
 pub mod db;
 pub mod doctor;
-pub mod elevated;
 pub mod engine;
+pub mod engines;
 pub mod error;
 pub mod models;
 pub mod pm;
@@ -40,8 +40,8 @@ pub fn run() {
             Some(vec!["--background"]),
         ))
         .manage(shortcuts::Shortcuts::default())
-        .manage(commands::packages::PmBusy::default())
         .manage(commands::doctor::DoctorBusy::default())
+        .manage(commands::databases::EngineBusy::default())
         .on_window_event(|window, event| {
             // Closing the window hides it to the tray; Quit in the tray menu really exits.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -51,9 +51,14 @@ pub fn run() {
         })
         .setup(|app| {
             let dir = data_dir(app)?;
+            // Databases are large, so they go in local (non-roaming) app data.
+            app.manage(commands::databases::DataRoot(
+                app.path().local_data_dir()?.join("Techomato Orbit"),
+            ));
             match db::open(&dir.join("orbit.db")) {
                 Ok(database) => {
                     let database = Arc::new(database);
+                    repo::processes::prune_history(&database, 30);
                     let secrets: Arc<dyn SecretStore> =
                         Arc::new(windows::creds::CredentialManagerStore);
                     let handle = app.handle().clone();
@@ -65,7 +70,11 @@ pub fn run() {
                     let sup = engine::supervisor::Supervisor::new(
                         database.clone(),
                         secrets.clone(),
-                        dir.join("logs"),
+                        // Local, not roaming: logs are large and change constantly.
+                        app.path()
+                            .local_data_dir()?
+                            .join("Techomato Orbit")
+                            .join("logs"),
                         std::env::current_exe()?,
                         Arc::new(move |rt| {
                             let _ = handle.emit("service://status", rt);
@@ -99,6 +108,7 @@ pub fn run() {
                         let _ = log_handle.emit("log://line", batch);
                     });
                     sup.adopt_on_startup();
+                    engine::winsvc::spawn_poller(database.clone(), sup.clone());
                     let notify_db_for_update = database.clone();
                     app.manage(database);
                     app.manage(secrets);
@@ -141,10 +151,8 @@ pub fn run() {
             commands::logs::log_export,
             commands::ports::ports_list,
             commands::ports::port_check,
-            commands::ports::port_end_process,
             commands::notifications::notification_list,
             commands::notifications::notification_clear,
-            commands::notifications::notify_port_conflict,
             commands::notifications::prefs_get,
             commands::notifications::prefs_set,
             commands::projects::project_list,
@@ -158,29 +166,20 @@ pub fn run() {
             commands::projects::project_start,
             commands::projects::project_stop,
             commands::projects::project_restart,
-            commands::winservices::winservice_list,
-            commands::winservices::winservice_pins,
-            commands::winservices::winservice_set_pins,
             commands::notifications::launched_in_background,
             commands::notifications::autostart_get,
             commands::notifications::autostart_set,
             commands::notifications::shortcuts_status,
-            commands::winservices::winservice_start,
-            commands::winservices::winservice_stop,
-            commands::winservices::winservice_restart,
-            commands::packages::pm_managers,
-            commands::packages::pm_installed,
-            commands::packages::pm_outdated,
-            commands::packages::pm_search,
-            commands::packages::pm_install,
-            commands::packages::pm_upgrade,
-            commands::packages::pm_upgrade_all,
-            commands::packages::pm_uninstall,
             commands::updates::update_check,
             commands::updates::update_install,
+            commands::databases::db_engines,
+            commands::databases::db_create,
+            commands::databases::db_cancel,
+            commands::detect::service_detect,
             commands::doctor::doctor_scan,
             commands::doctor::doctor_fix,
             commands::pick_path,
+            commands::open_repo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Techomato Orbit");

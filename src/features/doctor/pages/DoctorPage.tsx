@@ -76,6 +76,9 @@ export function DoctorPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Doctor" summary={summary} onRefresh={scan} refreshing={scanning} />
+      <p role="status" className="sr-only">
+        {scanning ? 'Checking your PC' : summary}
+      </p>
       <p className="max-w-2xl text-sm text-fg-muted">
         Doctor only looks. Nothing changes unless you press a button and confirm. Tags say what a
         finding is about: <b>Speed</b> affects how fast the PC feels, <b>Storage</b> is disk space

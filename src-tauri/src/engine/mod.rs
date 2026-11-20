@@ -1,4 +1,5 @@
 pub mod deps;
+pub mod detect;
 pub mod health;
 pub mod logs;
 pub mod notify;
@@ -7,3 +8,4 @@ pub mod preflight;
 pub mod projects;
 pub mod state;
 pub mod supervisor;
+pub mod winsvc;

@@ -2,14 +2,14 @@ import { useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { z } from 'zod';
 import { useAppDispatch, useAppSelector } from '@/app/store';
-import { showLogs } from '@/app/uiSlice';
+import { pushToast, showLogs, setModule } from '@/app/uiSlice';
 import { useServices } from '@/features/services';
 import { CMD } from '@/shared/ipc/commands';
 import { ipc, ipcVoid } from '@/shared/ipc/invoke';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
 import { PageHeader } from '@/shared/ui/PageHeader';
-import { SearchInput, Select } from '@/shared/ui/Field';
+import { Check, SearchInput, Select } from '@/shared/ui/Field';
 import { useLogBuffer } from '../api/useLogs';
 import { LogViewer } from '../components/LogViewer';
 import { filterLines, type Stream } from '../logFilter';
@@ -18,8 +18,10 @@ const ALL: ReadonlySet<Stream> = new Set<Stream>(['stdout', 'stderr']);
 
 export function LogsPage() {
   const dispatch = useAppDispatch();
-  const serviceId = useAppSelector((s) => s.ui.logServiceId);
+  const picked = useAppSelector((s) => s.ui.logServiceId);
   const services = useServices();
+  // A deleted service is no longer a choice.
+  const serviceId = services.data?.some((s) => s.id === picked) ? picked : null;
   const { lines, clear } = useLogBuffer(serviceId);
   const [query, setQuery] = useState('');
   const [streams, setStreams] = useState<ReadonlySet<Stream>>(ALL);
@@ -38,7 +40,13 @@ export function LogsPage() {
   });
   const exportLogs = useMutation({
     mutationFn: () => ipc(CMD.logExport, { serviceId }, z.boolean()),
+    onSuccess: (saved) => saved && dispatch(pushToast('Log saved.', 'info')),
   });
+  const copy = (text: string) =>
+    navigator.clipboard.writeText(text).then(
+      () => dispatch(pushToast('Copied to the clipboard.', 'info')),
+      () => dispatch(pushToast('Could not copy to the clipboard.')),
+    );
 
   const toggleStream = (s: Stream) =>
     setStreams((cur) => {
@@ -70,7 +78,18 @@ export function LogsPage() {
       />
 
       {!serviceId ? (
-        <Card>Choose a service to see its output.</Card>
+        <Card className="flex flex-wrap items-center gap-3">
+          {services.data?.length === 0 ? (
+            <>
+              <span>There are no services yet, so there is no output to show.</span>
+              <Button size="sm" onClick={() => dispatch(setModule('services'))}>
+                Go to Services
+              </Button>
+            </>
+          ) : (
+            'Choose a service to see its output.'
+          )}
+        </Card>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
@@ -81,33 +100,23 @@ export function LogsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            <label className="flex items-center gap-1 text-sm">
-              <input
-                type="checkbox"
+            <div role="group" aria-label="Show" className="flex items-center gap-3">
+              <Check
+                label="stdout"
                 checked={streams.has('stdout')}
                 onChange={() => toggleStream('stdout')}
               />
-              stdout
-            </label>
-            <label className="flex items-center gap-1 text-sm">
-              <input
-                type="checkbox"
+              <Check
+                label="stderr"
                 checked={streams.has('stderr')}
                 onChange={() => toggleStream('stderr')}
               />
-              stderr
-            </label>
-            <label className="flex items-center gap-1 text-sm">
-              <input
-                type="checkbox"
-                checked={autoScroll}
-                onChange={(e) => setAutoScroll(e.target.checked)}
-              />
-              Auto-scroll
-            </label>
+              <Check label="Auto-scroll" checked={autoScroll} onChange={setAutoScroll} />
+            </div>
             <span className="ml-auto flex flex-wrap gap-2">
               <Button
                 size="sm"
+                aria-pressed={paused}
                 onClick={() => {
                   if (!paused) setFrozen(lines);
                   setPaused(!paused);
@@ -115,12 +124,7 @@ export function LogsPage() {
               >
                 {paused ? 'Resume' : 'Pause'}
               </Button>
-              <Button
-                size="sm"
-                onClick={() =>
-                  void navigator.clipboard.writeText(shown.map((l) => l.text).join('\n'))
-                }
-              >
+              <Button size="sm" onClick={() => void copy(shown.map((l) => l.text).join('\n'))}>
                 Copy
               </Button>
               <Button size="sm" disabled={exportLogs.isPending} onClick={() => exportLogs.mutate()}>

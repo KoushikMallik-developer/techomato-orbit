@@ -1,6 +1,8 @@
 use crate::commands::confirm_action;
+use crate::commands::databases::DataRoot;
 use crate::db::Db;
 use crate::engine::supervisor::{ServiceRuntime, Supervisor};
+use crate::engines::instance::{owned_dir, remove_owned};
 use crate::error::{AppError, AppResult, ErrorKind};
 use crate::models::service::ServiceSpec;
 use crate::repo::services as repo;
@@ -50,9 +52,12 @@ pub async fn service_delete(
     db: State<'_, Arc<Db>>,
     secrets: Secrets<'_>,
     sup: State<'_, Supervisor>,
+    root: State<'_, DataRoot>,
     id: String,
 ) -> AppResult<()> {
     let spec = repo::get(&db, &id)?;
+    // A database made by Orbit also owns its data folder; say so, and remove it with the service.
+    let owned = owned_dir(&root.0, &spec, &repo::list(&db)?);
     if !can_delete(sup.runtime(&id).status) {
         return Err(AppError::new(
             ErrorKind::Conflict,
@@ -62,13 +67,39 @@ pub async fn service_delete(
     confirm_action(
         &app,
         "Delete service",
-        &format!(
-            "Delete \"{}\"? Its configuration and saved secrets are removed. Files on disk are not touched.",
-            spec.name
-        ),
+        &match &owned {
+            Some(dir) => format!(
+                "Delete \"{}\"? Its data in {} is deleted for good.",
+                spec.name,
+                dir.display()
+            ),
+            None => format!(
+                "Delete \"{}\"? Its configuration and saved secrets are removed. Files on disk are not touched.",
+                spec.name
+            ),
+        },
         "Delete",
     )?;
-    repo::delete(&db, secrets.inner().as_ref(), &id)
+    let deleted = repo::delete(&db, secrets.inner().as_ref(), &id);
+    // Cleaning the secrets can fail after the row is gone; the data and logs still go then.
+    if repo::get(&db, &id).is_ok() {
+        return deleted;
+    }
+    sup.forget_logs(&id);
+    let removed = match owned {
+        Some(_) => remove_owned(&root.0, &spec.working_dir),
+        None => Ok(()),
+    };
+    removed.map_err(|e| {
+        let at = owned
+            .as_ref()
+            .map_or_else(String::new, |d| d.display().to_string());
+        AppError::new(
+            ErrorKind::Io,
+            format!("The service was deleted, but its data folder {at} could not be removed: {e}"),
+        )
+    })?;
+    deleted
 }
 
 /// Lifecycle calls block (stop waits for the process), so they run off the async runtime.

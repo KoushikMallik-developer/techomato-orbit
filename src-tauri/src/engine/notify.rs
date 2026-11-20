@@ -12,7 +12,6 @@ pub enum Kind {
     StartFailed,
     HealthFailed,
     AutoRestart,
-    PortConflict,
 }
 
 impl Kind {
@@ -24,7 +23,6 @@ impl Kind {
             Kind::StartFailed => "startFailed",
             Kind::HealthFailed => "healthFailed",
             Kind::AutoRestart => "autoRestart",
-            Kind::PortConflict => "portConflict",
         }
     }
 
@@ -36,7 +34,6 @@ impl Kind {
             Kind::StartFailed => p.start_failed,
             Kind::HealthFailed => p.health_failed,
             Kind::AutoRestart => p.auto_restart,
-            Kind::PortConflict => p.port_conflict,
         }
     }
 }
@@ -115,15 +112,6 @@ pub fn notice_for(
     found.filter(|n| n.kind.enabled(prefs))
 }
 
-/// A watched port taken by something other than its service.
-pub fn port_conflict(port: u16, process: &str, pid: u32, prefs: &NotifyPrefs) -> Option<Notice> {
-    Kind::PortConflict.enabled(prefs).then(|| Notice {
-        kind: Kind::PortConflict,
-        title: format!("Port {port} is taken"),
-        body: format!("{process} (PID {pid}) is using port {port}."),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,7 +135,6 @@ mod tests {
             crashed: true,
             start_failed: true,
             health_failed: true,
-            port_conflict: true,
             auto_restart: true,
         }
     }
@@ -259,18 +246,6 @@ mod tests {
             &off
         )
         .is_some());
-    }
-
-    #[test]
-    fn port_conflict_names_the_port_process_and_pid_and_respects_prefs() {
-        let n = port_conflict(8080, "node.exe", 42, &all_on()).unwrap();
-        assert_eq!(n.kind, Kind::PortConflict);
-        assert!(n.body.contains("8080") && n.body.contains("node.exe") && n.body.contains("42"));
-        let off = NotifyPrefs {
-            port_conflict: false,
-            ..all_on()
-        };
-        assert!(port_conflict(8080, "node.exe", 42, &off).is_none());
     }
 
     #[test]
