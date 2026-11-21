@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/banners/readme/dark-orbit-1500x500.png" alt="Techomato Orbit: your local dev machine in one window" width="100%">
+
 # Techomato Orbit
 
 <img src="assets/brand/orbit-icon.svg" width="128" alt="Techomato Orbit icon">
