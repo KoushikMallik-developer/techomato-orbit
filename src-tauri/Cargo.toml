@@ -4,6 +4,11 @@ version = "0.2.0"
 description = "Techomato Orbit — your local dev machine in one window"
 authors = ["Techomato"]
 license = "MIT"
+repository = "https://github.com/KoushikMallik-developer/techomato-orbit"
+homepage = "https://github.com/KoushikMallik-developer/techomato-orbit"
+readme = "../README.md"
+keywords = ["windows", "developer-tools", "service-manager", "tauri", "localhost"]
+categories = ["development-tools"]
 default-run = "techomato-orbit"
 edition = "2021"
 

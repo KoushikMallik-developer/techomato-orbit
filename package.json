@@ -1,6 +1,30 @@
 {
   "name": "techomato-orbit",
   "private": true,
+  "description": "Techomato Orbit: a free, open-source Windows app to manage local services, databases, logs, ports and PC health.",
+  "keywords": [
+    "windows",
+    "developer-tools",
+    "local-development",
+    "service-manager",
+    "process-manager",
+    "postgresql",
+    "redis",
+    "mongodb",
+    "mariadb",
+    "tauri",
+    "react",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KoushikMallik-developer/techomato-orbit.git"
+  },
+  "homepage": "https://github.com/KoushikMallik-developer/techomato-orbit#readme",
+  "bugs": {
+    "url": "https://github.com/KoushikMallik-developer/techomato-orbit/issues"
+  },
+  "license": "MIT",
   "version": "0.2.0",
   "type": "module",
   "engines": {
