@@ -175,13 +175,6 @@ Contributions are welcome, from a typo fix to a new feature.
 Colours come only from the tokens in `src/styles/theme.css`. How the app fits together is in
 [Architecture](docs/architecture.md).
 
-## Project links
-
-- [Architecture](docs/architecture.md)
-- [Database schema](docs/database_schema.md)
-- [Design specification](docs/superpowers/specs/2026-11-19-techomato-orbit-design.md)
-- [Release guide](docs/releasing.md)
-
 ## License
 
 Techomato Orbit is free and open source under the [MIT License](LICENSE).
